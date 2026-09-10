@@ -1,0 +1,46 @@
+# Day 13 — Exercise: Week-7 Cold Spot-Check
+
+## 1. From memory
+
+(a) The 7-step liturgy + each step's question. (b) The verdict
+template's five sentences. (c) SE price list. (d) EWMA memory at
+λ=0.94. (e) JB formula + both pathologies. (f) The two scaling traps.
+(g) fillna(0) vs ffill lies.
+
+```python
+# (a)
+# (b)
+# (c)
+# (d)
+# (e)
+# (f)
+# (g)
+```
+
+## 2. Two computations, cold
+
+(1) JB for n=48, skew −0.9, kurt 2.4 — reject? Which leg drives?
+(2) 21-day vol estimate 25% annualized — its SE (iid assumption), and
+the honest correction direction (clustering).
+
+```python
+import numpy as np
+from scipy import stats
+# YOUR CODE
+```
+
+## 3. The 20-minute cold EDA (dress rehearsal)
+
+Blank cell → an asset of your choice (not SPY): steps 0–4 (structure,
+headline, shape, moments±SE, QQ) + the one-paragraph verdict. This is
+tomorrow, under exam conditions — rehearse it.
+
+```python
+# YOUR CODE
+```
+
+## 4. Systems check
+
+- [ ] PROGRESS.md updated through day 12.
+- [ ] Error log has ≥1 entry per week of this module.
+- [ ] Tomorrow: closed everything. Data and code open.

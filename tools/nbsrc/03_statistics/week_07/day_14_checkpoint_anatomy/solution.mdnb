@@ -1,0 +1,121 @@
+# Day 14 — Solution: Anatomy of a Distribution (exemplar, XLE)
+
+*Your asset, your numbers, your words — compare structure and verdicts,
+not floats.*
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import scipy.stats as st
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+from qrc.universe import load_universe
+
+ASSET = "XLE"
+if DATA_SOURCE == "real":
+    px = get_prices(ASSET, start="2005-01-01")
+else:
+    px = synthetic_prices(n_days=4000, n_assets=1, seed=42)
+    px.columns = [ASSET]
+r = px[ASSET].pct_change().dropna()
+```
+
+## Part 1 — data audit (exemplar)
+
+```python
+print(f"n={len(r)}, {r.index[0].date()} → {r.index[-1].date()}, source={DATA_SOURCE}")
+print(f"NaNs in raw prices: {px[ASSET].isna().sum()}")
+print(f"|r|>25%: {(r.abs()>0.25).sum()} days; zero days: {(r==0).sum()}")
+print(f"worst 3: {r.nsmallest(3).round(3).to_dict()}")
+```
+
+Verdict (exemplar): "n≈4,900 clean rows, 2005→; no missing days beyond
+normal holidays; no |r|>25% (max −12%/+14% — energy crash days, real);
+zero-return days <0.5% (no stale-mark disease); splits/dividends
+consistent with the adjusted series. Trustworthy, with the caveat that
+XLE is itself a survivor (energy-sector composition changed)."
+
+## Part 2 — EDA (exemplar numbers, real data)
+
+```python
+z = (r - r.mean())/r.std(); n = len(r)
+mad = 1.4826*np.median(np.abs(r - r.median()))
+print(f"mean {r.mean():+.4%}±{r.std()/np.sqrt(n):.4%} | SD {r.std():.3%} | MAD {mad:.3%} "
+      f"| skew {z.skew():+.2f}±{np.sqrt(6/n):.2f} | kurt {(z**4).mean()-3:.1f}±{np.sqrt(24/n):.1f}")
+print(f"tail multiple: {(abs(z)>3).mean()/0.0027:.1f}x")
+q = st.norm.ppf((np.arange(n)+0.5)/n)
+plt.figure(figsize=(12,4))
+plt.subplot(121); plt.scatter(q, np.sort(z), s=3); plt.plot([-4,4],[-4,4],'r--')
+plt.title(f"QQ {ASSET}")
+plt.subplot(122); plt.plot(r.rolling(63).std()*np.sqrt(252)); plt.title("63d vol")
+plt.show()
+```
+
+Typical XLE: mean ~+0.03%/day ±0.02, SD ~1.7%, skew −0.3..−0.8,
+κ 8–15, tail multiple 4–7×, |r| ACF₁ ~0.15–0.25, vol range 15%→90%.
+
+## Part 3 — interrogation (exemplar findings)
+
+- Three centers: mean ≈ trimmed ≈ median (drift robust to its own
+  crashes) — but SD/MAD ~1.3: the spread is NOT robust.
+- p1 ≈ −4%±0.5%: the 99% VaR carries a ±12% relative band.
+- Rolling mean vs band: outside ~15% of days → borderline; consistent
+  with noise once clustering widens the band.
+- κ(daily) ~12 → κ(weekly) ~3 → κ(monthly) ~1: aggregational
+  Gaussianity on schedule.
+
+## Part 4 — the report (exemplar, ≤400 words)
+
+> **XLE daily return anatomy (2005–2024, n≈4,900).**
+> **Data:** clean, liquid, survivorship caveat (sector composition).
+> **Distribution:** mean +0.03%/day (±0.02) — statistically
+> indistinguishable from zero at 2 SE; SD 1.7%; skew −0.5 (±0.07);
+> excess kurtosis 12 (±0.07). QQ departs the normal at z≈−2 left / +2.5
+> right — crash-asymmetric fat tails; observed |z|>3 rate ~1.5%, a 5×
+> tail multiple.
+> **Dependence:** returns near-white (max ACF inside ±0.03);
+> volatility strongly clustered (|r| ACF₁ 0.20, 0.07 at lag 10) with
+> 4 vol regimes (2008, 2011, 2015–16, 2020).
+> **Limitations:** one path, one country's energy sector; kurtosis is
+> 2008-2020-cluster-driven (drop 2008: κ falls to ~7 — still fat);
+> window halves agree on direction of every verdict.
+> **Recommendation:** normal-VaR disqualified (5× tail multiple at
+> 99%); iid simulation disqualified for drawdown studies (clustering);
+> acceptable family: GARCH-t (fat tails + clustered vol + skew), or
+> empirical with block resampling ≥63 days. The 1% daily VaR should be
+> quoted as −4% ± 0.5%, not a point.
+
+## Part 5 — bias audit (exemplar)
+
+- **Selection:** XLE chosen for energy-cycle variance — a "boring"
+  consumer-staples ETF would have shown thinner tails; conclusions are
+  sector-specific.
+- **Window:** 2005-start includes 2008 — the kurtosis headline depends
+  on it (halves: κ 14 vs 7). Direction survives; magnitude is
+  window-chosen. Say which you mean.
+- **Survivorship:** XLE's constituents changed (fracking era); the
+  index survived; its 2005 population didn't. Tail estimates for the
+  *sector's actual 2005 stocks* would be worse.
+- **Multiplicity:** ~10 implicit tests run; all headline effects ≥5 SE
+  — no luck-inflation concern; the borderline one (mean ≠ 0) properly
+  reported as unresolved, not claimed.
+
+**Self-grade exemplar:** data audit 3/3 (checks actually run);
+statistics-with-(±,n) 2.5/3 (the vol-regime count is a judgment call —
+no SE); exhibits 3/3 (bend located, regimes dated); verdict 4/4 (family
+named, models disqualified with numbers); bias audit 3.5/4 (survivorship
+could be deeper); honesty 3/3 (mean left unresolved; κ window
+sensitivity disclosed). 19/20 — the missing points are all "depth of
+one more question," which is exactly the standard module 04 will hold
+you to.

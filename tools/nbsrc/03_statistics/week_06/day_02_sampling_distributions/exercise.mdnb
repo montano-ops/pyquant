@@ -1,0 +1,79 @@
+# Day 2 — Exercise: Sampling Distributions
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    px = get_prices("SPY", start="1993-01-01")
+else:
+    px = synthetic_prices(n_days=8000, n_assets=1, seed=32)
+    px.columns = ["SPY"]
+r = px["SPY"].pct_change().dropna()
+```
+
+## E1 (L3) — The SE price list, verified
+
+For n = 63, 252, 1008: simulate (1,500 draws of size n from r) the
+sampling SD of: mean, SD, skew, excess kurtosis. Compare against the
+formulas σ/√n, σ/√(2n), √(6/n), √(24/n). Which formulas fail on real
+data, and in which direction? (Dependence!)
+
+```python
+rng = np.random.default_rng(0)
+# YOUR CODE
+```
+
+## E2 (L4) — The quantile catastrophe
+
+For n = 252: simulate the sampling distribution of the empirical p5,
+p1, and p0.5. Report each estimate's SE. Then: how many days of data
+until the p1 estimate's SE is 10% of its value? (You are pricing the
+difficulty of VaR estimation.)
+
+```python
+# YOUR CODE
+```
+
+## E3 (L5) — Estimator duel: plain vs winsorized SD
+
+Contaminate: take r and replace 3 random days with −15%. Compare plain
+SD vs 1%-winsorized SD as estimators of the *uncontaminated* vol:
+compute each estimator's bias and sampling SD across 1,000 contaminated
+draws. Who wins on MSE? State the trade you just watched.
+
+```python
+# YOUR CODE
+```
+
+## E4 (L7) — Where could this mislead?
+
+A risk report: "Daily 99% VaR = −2.8% (250-day window)." Write the two-
+sentence footnote the report needs (SE of the estimate; regime
+dependence of the window).
+
+```python
+# Your answer:
+```
+
+## Hints
+
+- E1: skew/kurt formulas assume normality AND independence; real r has
+  fat tails + clustering — expect the simulated SEs of skew/kurt to be
+  LARGER than the formulas.
+- E2: SE(p1) shrinking like 1/√n; the target n is big — that's the
+  answer, not a failure.

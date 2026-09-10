@@ -1,0 +1,89 @@
+# Day 12 — Exercise: Missing Data & Frequency
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    px = get_prices(["SPY", "TLT", "EEM", "EWJ"], start="2005-01-01")
+else:
+    px = synthetic_prices(n_days=4000, n_assets=4, seed=41, corr=0.3)
+    px.columns = ["SPY", "TLT", "EEM", "EWJ"]
+```
+
+## E1 (L4) — Manufacture a NaN crisis
+
+Take the panel; randomly remove 8% of EEM's prices (rng, seeded);
+create three "solutions": (a) dropna on the panel; (b) fillna(0) on
+returns; (c) ffill prices then returns. For each: report n, EEM's vol,
+EEM-SPY correlation. Which lies most? Rank the three by damage and
+name each lie.
+
+```python
+# YOUR CODE
+```
+
+## E2 (L4) — The stale-price trap
+
+Construct an illiquid series: SPY returns but replace 30% of days
+(chosen randomly) with exact 0.0 returns ("no trade"). Compute vol,
+skew, kurt of the stale series vs the original. Then compute the
+*traded-day* statistics. Explain the risk-book vs marketing-book
+numbers.
+
+```python
+# YOUR CODE
+```
+
+## E3 (L5) — Aggregational Gaussianity, measured
+
+SPY: kurtosis at daily, weekly, monthly, quarterly (resample sums),
+with SEs (√(24/n)). Where does it cross zero (i.e., become
+statistically normal)? Plot κ vs frequency with error bars.
+
+```python
+# YOUR CODE
+```
+
+## E4 (L4) — The √t trap
+
+Empirically: ratio of P(21-day loss < −5%) to P(daily loss < −5%/√21)
+— i.e., does the tail scale like √t? Compute both. Which is bigger,
+and what does that say about scaling daily VaR to monthly?
+
+```python
+# YOUR CODE
+```
+
+## E5 (L7) — Where could this mislead?
+
+A pitch deck: "Monthly Sharpe 1.1 (60 months); daily tracking shows
+Sharpe 0.7 — use the monthly, it's the strategy's true horizon."
+Audit the sentence: what's legitimate, what's hiding?
+
+```python
+# Your answer:
+```
+
+## Hints
+
+- E1: correlation toward zero comes from the fake zeros in EEM's
+  returns adding noise-free variance... actually fake zeros REDUCE
+  covariance AND variance — check the direction empirically; report
+  what you see, then explain it.
+- E4: fat tails + clustering make multi-day losses MORE likely than
+  √t scaling predicts — the empirical ratio should exceed 1.

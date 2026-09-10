@@ -1,0 +1,101 @@
+# Day 1 — Solution: Population vs Sample
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    px = get_prices("SPY", start="1993-01-01")
+else:
+    px = synthetic_prices(n_days=8000, n_assets=1, seed=31)
+    px.columns = ["SPY"]
+r = px["SPY"].pct_change().dropna()
+```
+
+## E1 — one statistic, many samples
+
+```python
+chunks = np.array_split(r.values, len(r) // 500)
+tbl = pd.DataFrame({
+    "mean": [c.mean() for c in chunks],
+    "sd": [c.std() for c in chunks]})
+print(tbl.round(5).to_string())
+print(f"\nobserved SD of chunk means {tbl['mean'].std():.5f} "
+      f"vs expected under stability {r.std()/np.sqrt(500):.5f}")
+```
+
+**Expected reasoning.** Chunk means scatter on the order of ±0.03–0.06%
+daily while each chunk's *own* SE is ~0.047% — the observed spread is in
+the same ballpark as pure-noise expectation (often 1.2–2× it; module
+02's dependence caveat explains the excess). The SD column wobbles
+0.8%–1.4%. **Both columns are sample statistics doing exactly what
+sample statistics do: wander. The lesson is printed in your own
+output — "the mean daily return of SPY" has never been a single number
+across 30 years of chunks.**
+
+## E2 — the graveyard demo
+
+```python
+rng = np.random.default_rng(7)
+rets = rng.normal(0, 0.01, (200, 1000))
+cum = np.cumprod(1 + rets, axis=1)
+perf_at_500 = cum[:, 499]
+dead = perf_at_500 < np.quantile(perf_at_500, 0.30)
+panel = rets.copy().astype(float)
+panel[dead, 500:] = np.nan
+
+alive_only = np.nanmean(panel[:, 500:])          # dropna per fund
+full = rets[:, 500:].mean()                       # the truth
+print(f"truth {full:+.5f} | survivors-only {alive_only:+.5f} "
+      f"| bias {(alive_only-full)*1e4:.2f}bp/day = {(alive_only-full)*252e2:.0f}bp/yr")
+```
+
+**Expected numbers:** survivors-only mean is a few bp/day above truth —
+compounding to tens of bp/year of pure survivorship, *from killing only
+30% on a single date with zero real skill differences*. Real graveyards
+kill continuously on performance; real databases join late (backfill
+bias stacks on top). **A "universe of existing funds" is not a sample
+of the population of funds — it's a sample of the survivors, and the
+direction of the bias is always toward beauty.**
+
+## E3 — your own sampling distributions
+
+```python
+rng = np.random.default_rng(8)
+n = len(r)
+idx = rng.integers(0, n, (2000, n))
+boot_mean = r.values[idx].mean(axis=1)
+boot_sd = r.values[idx].std(axis=1)
+print(f"mean {r.mean():.5f} ± {boot_mean.std():.5f} (n={n}, {r.index[0].date()}→{r.index[-1].date()})")
+print(f"SD   {r.std():.5f} ± {boot_sd.std():.5f}")
+print(f"relative SE: mean {boot_mean.std()/abs(r.mean()):.2f} vs SD {boot_sd.std()/r.std():.3f}")
+```
+
+**Expected reasoning.** The mean's relative SE is ~10–20× the SD's
+(e.g., 30% vs 1.6%): the mean is barely resolved at n≈8,000 while vol
+is pinned to a fraction of a percent. **The mean is expensive, risk is
+cheap — measure accordingly and distrust any claim about drift that
+doesn't carry its SE.**
+
+## E4 — the four gaps (exemplar)
+
+(1) Sample→population: 14.2% is one path's realized CAGR; the
+distribution of CAGRs at this n spans ~±4% (E4 of day 9 quantifies).
+(2) Selection: the strategy reached the post *because* its sample was
+the good one — the graveyard is invisible. (3) Non-stationarity: the
+sample's population (2005–2020 rates, spreads, structure) is not the
+live population. (4) Costs: the backtest's fills are a model; live
+execution is a random variable with a bid-ask spread.

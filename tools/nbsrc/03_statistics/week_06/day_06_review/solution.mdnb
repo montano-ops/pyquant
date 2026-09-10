@@ -1,0 +1,58 @@
+# Day 6 — Solution: Week-6 Spot-Check
+
+## 1. From memory — reference
+
+(a) Survivorship (dead excluded → up), selection (shown because good →
+up), look-ahead (future in past → up), snooping (many tries, one shown
+→ up). All four point the same way in practice.
+(b) n=252, σ=1%: mean 0.063%, SD 0.045%, skew 0.155, kurt 0.31.
+(c) 1.4826 = 1/Φ⁻¹(0.75) — rescales MAD to SD-matching at normality.
+(d) One k-σ point in n: kurtosis contribution ≈ k⁴/n.
+(e) Winsorize = cap at quantiles (keep the day, shrink it); trim =
+drop the extremes.
+(f) Detect robustly → verify externally (calendar/volume/news) →
+report with AND without → never silently delete.
+
+## 2. Two computations
+
+```python
+import numpy as np
+se_skew = np.sqrt(6/1008)
+print(f"skew: {-0.5/se_skew:.1f} SE from zero")
+se_mean = 0.011/np.sqrt(252)
+print(f"mean: {0.0009/se_mean:.1f} SE from zero")
+```
+
+Skew: −0.5/0.077 ≈ **6.5 SE** — decisive. Mean: 0.09%/0.069% ≈
+**1.3 SE** — a single year's mean of +0.09% is indistinguishable from
+zero. Same data, same n, one verdict crisp and one mushy: the moments
+have different prices.
+
+## 3. The drill (reference output shape)
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+if DATA_SOURCE == "real":
+    r = get_prices("SPY", start="1993-01-01")["SPY"].pct_change().dropna()
+else:
+    r = synthetic_prices(n_days=8000, n_assets=1, seed=31)["S0"].pct_change().dropna()
+z = (r - r.mean()) / r.std()
+mad = 1.4826 * np.median(np.abs(r - r.median()))
+n = len(r)
+print(f"n={n}: mean {r.mean():+.5f} | median {r.median():+.5f} | SD {r.std():.4f} | "
+      f"MAD {mad:.4f} | skew {z.skew():+.2f}±{np.sqrt(6/n):.2f} | "
+      f"kurt {(z**4).mean()-3:.1f}±{np.sqrt(24/n):.1f}")
+```
+
+If this took >15 minutes, tomorrow's project will overrun — the
+mini-project is this drill × 3 assets + 6 facts.

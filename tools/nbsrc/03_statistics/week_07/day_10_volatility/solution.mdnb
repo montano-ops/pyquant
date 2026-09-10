@@ -1,0 +1,116 @@
+# Day 10 — Solution: Volatility
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    px = get_prices("SPY", start="1993-01-01")
+else:
+    px = synthetic_prices(n_days=8000, n_assets=1, seed=39)
+    px.columns = ["SPY"]
+r = px["SPY"].pct_change().dropna()
+```
+
+## E1 — the EKG
+
+```python
+v21 = r.rolling(21).std() * np.sqrt(252)
+v63 = r.rolling(63).std() * np.sqrt(252)
+plt.plot(v21, lw=0.7, label="21d"); plt.plot(v63, lw=1.1, label="63d")
+plt.axhline(r.std()*np.sqrt(252), color="red", ls="--")
+plt.legend(); plt.show()
+d = v21.dropna()
+print(f"vol: min {d.min():.0%}, max {d.max():.0%}, multiple {d.max()/d.min():.0f}x")
+print("peak dates:", d.nlargest(3).index.date)
+```
+
+**Expected (real SPY):** ~7% to ~80%+, a 10×+ multiple; peaks cluster
+at 2008-11, 2020-03, 2011-08; regimes: calm (1993–96, 2003–07, 2016–17,
+2017), stressed (1998, 2000–02, 2008–09, 2011, 2015, 2018, 2020,
+2022). **The 21d line oscillates violently around the smoother 63d —
+the estimator's own noise (SE ≈ σ/√42) on top of the true process.**
+
+## E2 — annualization checked
+
+```python
+ann_daily = r.groupby(r.index.year).std() * np.sqrt(252)
+ann_actual = r.resample("YE").sum()
+print(pd.DataFrame({"sqrt252 x daily SD": ann_daily.round(3),
+                    "actual annual return": ann_actual.round(3)}).dropna().to_string())
+```
+
+**Expected reasoning.** The two columns answer different questions
+(scale vs realized outcome) — the conceptual gap: √252-annualization
+assumes this year's daily vol persists AND independent aggregation; the
+realized annual return also contains the mean and any drift within the
+year. Years with big within-year regime shifts break naive
+scaling-based intuition worst. **The lesson is the *type* error: a
+scale translation is not a forecast of the outcome.**
+
+## E3 — EWMA vs rolling
+
+```python
+lam = 0.94
+ewma = (r.pow(2).ewm(alpha=1-lam).mean() ** 0.5) * np.sqrt(252)
+both = pd.concat([v21.rename("roll21"), ewma.rename("ewma")], axis=1).dropna()
+print(f"corr: {both.corr().iloc[0,1]:.2f}")
+diff = (both["ewma"] - both["roll21"]).abs().nlargest(3)
+print("largest disagreements:", diff.index.date)
+plt.plot(both); plt.show()
+```
+
+**Expected reasoning.** Correlation ~0.9+; disagreements cluster at
+regime turns: EWMA jumps within days of a shock (half-memory ~11 days)
+while the 21d window keeps pre-shock calm in its average for weeks —
+and then, symmetrically, the *window* stays panicked for 3 weeks after
+calm returns while EWMA forgets exponentially. **Fast reaction and
+slow forgetting are the same dial: neither estimator wins everywhere;
+risk limits want the fast one, P&L attribution wants the stable one.**
+
+## E4 — the one-day-ahead league
+
+```python
+r2 = r.iloc[-2520:]                      # last 10 years
+target = r2.pow(2)
+fc_full = pd.Series(r.std()**2, index=r2.index)
+fc_roll = r.pow(2).rolling(21).mean().shift(1).reindex(r2.index)
+fc_ewma = r.pow(2).ewm(alpha=0.06).mean().shift(1).reindex(r2.index)
+for nm, fc in [("full-sample", fc_full), ("21d rolling", fc_roll), ("EWMA(0.94)", fc_ewma)]:
+    m = (fc.notna() & target.notna())
+    print(f"{nm:12s}: MSE {((fc[m]-target[m])**2).mean():.10f}")
+```
+
+**Expected ranking:** EWMA ≤ 21d rolling < full-sample (exact numbers
+vary; margins are modest — a few % of MSE). **Persistence pays (rolling
+beats unconditional), reaction speed pays more (EWMA beats rolling).
+The gap between full-sample and the rest IS the regime information: a
+constant-vol forecast throws away the one predictable thing markets
+offer.** (GARCH, module 09, does this properly and wins by more.)
+
+## E5 — where this mislead (exemplar)
+
+At the spike: vol targeting correctly de-levers (10%/80% → positions
+cut ~87%), protecting the down days — that part works. Then the market
+V-turns (2009-03, 2020-03–04): the strategy's vol estimate stays
+elevated for weeks (21d window holds the panic; EWMA holds it ~2 weeks)
+— it re-enters too slowly and too small, missing the sharpest recovery
+days, which are historically concentrated immediately after vol
+peaks. **The strategy's real risk is not the spike; it's the whipsaw —
+structural under-participation in recoveries, a cost paid every cycle,
+invisible in calm-period backtests.** Vol targeting sells crash
+insurance and pays for it with rebound slippage; the backtest must
+contain at least two V-events to price that trade honestly.

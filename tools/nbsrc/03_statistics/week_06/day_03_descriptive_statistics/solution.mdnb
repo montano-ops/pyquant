@@ -1,0 +1,114 @@
+# Day 3 — Solution: Descriptive Statistics
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+from scipy import stats
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    px = get_prices(["SPY", "XLE"], start="2005-01-01")
+else:
+    px = synthetic_prices(n_days=5000, n_assets=2, seed=33, drift_spread=0.0004)
+    px.columns = ["SPY", "XLE"]
+```
+
+## E1 — three centers, two spreads
+
+```python
+rows = []
+for c in px.columns:
+    s = px[c].pct_change().dropna()
+    mad = 1.4826 * np.median(np.abs(s - s.median()))
+    rows.append([c, s.mean(), stats.trim_mean(s, 0.05), s.median(),
+                 s.std(), mad, s.mean()-s.median(), s.std()/mad])
+print(pd.DataFrame(rows, columns=["asset", "mean", "trim5%", "median", "SD",
+                                  "MAD", "mean-med", "SD/MAD"]).round(5).to_string(index=False))
+```
+
+**Expected reasoning (real data).** SPY: mean ≈ median (the daily
+drift is tiny and skew effects are small at this aggregation) — the
+three centers agree to <0.01%. XLE: similar centers, but SD/MAD > 1.2
+— the fat-tail gap. **When the three centers agree, the center is
+robust (report the mean, it compounds); when they scatter, the
+distribution is telling you the mean is hostage to the tails.** The
+SD/MAD ratio is a one-number fat-tail diagnostic: 1.0 = normal-ish,
+1.2+ = fat.
+
+## E2 — robustness under attack
+
+```python
+s = px["SPY"].pct_change().dropna()
+def six(x):
+    mad = 1.4826 * np.median(np.abs(x - np.median(x)))
+    z = (x - x.mean()) / x.std()
+    return [np.mean(x), stats.trim_mean(x, 0.05), np.median(x),
+            np.std(x), mad, (z**3).mean(), (z**4).mean()-3]
+base = np.array(six(s.values))
+attacked = np.array(six(np.append(s.values, [-0.10, -0.15, -0.20])))
+names = ["mean", "trim", "median", "SD", "MAD", "skew", "kurt"]
+for nm, b, a in zip(names, base, attacked):
+    print(f"{nm:7s}: {b:+.4f} -> {a:+.4f}  ({(a-b)/abs(b):+.0%} change)")
+```
+
+**Expected ranking (least to most robust):** kurtosis (explodes
+~10–100×), skew, SD, trimmed mean, mean, median, MAD. Matches theory:
+robustness tracks the highest power of x the statistic uses — kurtosis
+uses x⁴, median uses only ranks. **The "attack three days" test is the
+fastest sanity check on any statistic you're about to trust.**
+
+## E3 — percentiles as risk objects
+
+```python
+rng = np.random.default_rng(3)
+v = s.values
+for p in [50, 5, 1]:
+    idx = rng.integers(0, len(v), (500, len(v)))
+    est = np.percentile(v[idx], p, axis=1)
+    print(f"p{p}: {np.percentile(v, p):.3%} ± {np.std(est):.3%}")
+```
+
+**Expected reasoning.** p50's SE is tiny; p5's is ~0.1pp; p1's SE
+reaches ~0.25–0.4pp on an estimate of ~−2.3% — a 95% band nearly 1pp
+wide on a number that risk limits are set to. **"The 99% VaR is −2.3%"
+and "the 99% VaR is somewhere between −1.6% and −3.1%" are the same
+sentence.** Only the second is honest.
+
+## E4 — the master ratio across frequencies
+
+```python
+for freq, agg in [("daily", "D"), ("weekly", "W"), ("monthly", "ME")]:
+    x = s.resample(agg).sum()
+    print(f"{freq:8s}: mean/SD = {x.mean()/x.std():+.4f}")
+```
+
+**Expected sight.** The raw ratio grows roughly like √t (daily
+~0.04, weekly ~0.09, monthly ~0.19) — because mean scales with t and
+SD with √t. **The honest statement: never compare Sharpe-like ratios
+across frequencies without annualizing; and after annualizing, daily-
+computed and monthly-computed ratios of the SAME asset differ only by
+estimation noise — resampling changes the view, not the information.**
+(Any large discrepancy between annualized-daily and annualized-monthly
+ratios of the same returns is a red flag for data or methodology bugs,
+not a discovery.)
+
+## E5 — false conclusion factory (exemplar)
+
+"Median monthly return +1.1%": consider 23 months of +1.1% and one
+month of −28%. Median: +1.1% — true. Mean: (23×1.1 − 28)/24 = −0.14%/
+month — the strategy LOSES money. The median is a fine statistic for
+"what a typical month feels like" and a fraudulent statistic for "what
+this investment earns" — because wealth compounds on the mean (really
+the log-mean), never on the median. Tail-risk strategies are marketed
+on median-ish statistics for exactly this reason.

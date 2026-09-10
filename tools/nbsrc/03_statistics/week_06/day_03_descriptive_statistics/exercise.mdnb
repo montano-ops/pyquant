@@ -1,0 +1,86 @@
+# Day 3 — Exercise: Descriptive Statistics on Returns
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+from scipy import stats
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    px = get_prices(["SPY", "XLE"], start="2005-01-01")
+else:
+    px = synthetic_prices(n_days=5000, n_assets=2, seed=33, drift_spread=0.0004)
+    px.columns = ["SPY", "XLE"]
+```
+
+## E1 (L3) — The three centers, side by side
+
+For each asset: mean, 5% trimmed mean, median — plus SD, scaled MAD.
+Present one table. Compute the mean−median gap and the SD/MAD ratio;
+interpret both (which tail drags? how fat?).
+
+```python
+# YOUR CODE
+```
+
+## E2 (L4) — Robustness under attack
+
+Take SPY returns; append synthetic crash days: −10%, −15%, −20% (three
+"1987s"). Recompute the six statistics. Which moved most (in % of
+original)? Rank the six statistics by robustness. Does the ranking
+match the theory from the lesson?
+
+```python
+# YOUR CODE
+```
+
+## E3 (L5) — Percentiles as risk objects
+
+For SPY: report p50, p5, p1 with their bootstrap SEs (500 resamples).
+Compare p1's bootstrap SE with its value — the "VaR is nearly
+unmeasurable" claim, quantified for YOUR sample.
+
+```python
+# YOUR CODE
+```
+
+## E4 (L6) — Signal-to-noise, the master ratio
+
+Compute mean/SD for daily, weekly, monthly (resampled) returns of SPY
+— the ratio should be roughly constant (why? both scale...). Actually
+compute all three: what do you see, and what's the honest statement?
+
+```python
+# Your code + answer:
+```
+
+## E5 (L7) — False conclusion factory
+
+A fund advertises "median monthly return +1.1%" for a tail-risk
+strategy. Construct the P&L distribution that makes the median
+*technically true* and the investment terrible. One paragraph, with
+numbers.
+
+```python
+# Your answer:
+```
+
+## Hints
+
+- E1: MAD-scaled = 1.4826 × median(|x − median|).
+- E4: mean scales with n, SD with √n, so mean/SD scales with √n — the
+  ratio grows with aggregation horizon; the honest statement is about
+  *comparability across horizons* (annualize before comparing).

@@ -1,0 +1,83 @@
+# Day 7 — Mini-Project: The Stylized-Facts Audit
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import scipy.stats as st
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    assets = {"SPY": get_prices("SPY", start="2005-01-01")["SPY"],
+              "TLT": get_prices("TLT", start="2005-01-01")["TLT"],
+              "XLE": get_prices("XLE", start="2005-01-01")["XLE"]}
+else:
+    _px = synthetic_prices(n_days=5000, n_assets=3, seed=36, corr=0.1)
+    _px.columns = ["SPY", "TLT", "XLE"]
+    assets = {c: _px[c] for c in _px.columns}
+rets = {k: v.pct_change().dropna() for k, v in assets.items()}
+```
+
+## Part 1 — The audit table
+
+For each asset, each of Cont's six facts: the test statistic, its SE
+where meaningful, n, verdict. Build it as a DataFrame (rows =
+asset × fact). Facts: (1) excess kurtosis; (2) max |ACF(r)| lags 1–10
+vs ±2/√T; (3) ACF(|r|) at lags 1 and 10; (4) κ daily vs weekly vs
+monthly; (5) corr(r_t, Δ log σ̂₂₁ at t+1); (6) corr(|r|, volume) —
+synthetic mode: use a volume proxy or mark it N/A with a note.
+
+```python
+# YOUR CODE
+```
+
+## Part 2 — Three exhibits
+
+(a) QQ plot of the fattest-tailed asset; (b) ACF(|r|) of SPY with
+bands; (c) grouped bar chart of κ by frequency (daily/weekly/monthly),
+three assets.
+
+```python
+# YOUR CODE
+```
+
+## Part 3 — The risk manager's paragraph
+
+≤150 words: which model families are disqualified per asset, with the
+statistic that disqualifies each. No hedges without numbers.
+
+```python
+# Your paragraph:
+```
+
+## Part 4 — The bias audit
+
+Window (halves), multiplicity (18 cells → expected luck hits),
+selection (why these three tickers?), data quality. One short section.
+
+```python
+# Your audit:
+```
+
+## Hints
+
+- Weekly/monthly: `r.resample("W").sum()` / `r.resample("ME").sum()`
+  (or `rolling(5).sum().iloc[::5]` — document your choice).
+- Fact 5: `v21 = r.rolling(21).std(); dlvol = np.log(v21).diff();
+  corr(r, dlvol.shift(-1))` — or same-day; document.
+- Fact 6 synthetic: `vol_proxy = (r.abs() * 1e6)` is circular (|r| vs
+  |r|) — instead mark N/A and say why. Circularity in a placebo is a
+  real bug to catch.

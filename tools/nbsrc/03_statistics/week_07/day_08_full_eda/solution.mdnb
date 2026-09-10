@@ -1,0 +1,99 @@
+# Day 8 — Solution: Full EDA
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import scipy.stats as st
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    px = get_prices("GLD", start="2006-01-01")
+else:
+    px = synthetic_prices(n_days=4000, n_assets=1, seed=37, fat_tails=True)
+    px.columns = ["GLD"]
+r = px["GLD"].pct_change().dropna()
+```
+
+## E1 — the liturgy, executed
+
+```python
+# Step 0-1: structure + headline
+print(f"n={len(r)}, {r.index[0].date()} → {r.index[-1].date()}")
+print(r.describe().round(4))
+# Step 3: moments with SEs
+z = (r - r.mean()) / r.std(); n = len(r)
+print(f"skew {z.skew():+.2f}±{np.sqrt(6/n):.2f} | kurt {(z**4).mean()-3:.1f}±{np.sqrt(24/n):.1f}")
+# Step 5-6: rolling + ACF
+fig, ax = plt.subplots(2, 2, figsize=(12, 7))
+ax[0,0].hist(r, bins=80); ax[0,0].set_title("histogram")
+q = st.norm.ppf((np.arange(n)+0.5)/n)
+ax[0,1].scatter(q, np.sort(z), s=3); ax[0,1].plot([-4,4],[-4,4],"r--")
+ax[0,1].set_title("QQ vs normal")
+ax[1,0].plot(r.rolling(63).mean()); ax[1,0].set_title("63d rolling mean")
+ax[1,1].plot(r.rolling(63).std()); ax[1,1].set_title("63d rolling vol")
+plt.tight_layout(); plt.show()
+acf_a = [r.abs().autocorr(k) for k in range(1, 11)]
+print("ACF(|r|) lags 1-10:", [f"{a:+.2f}" for a in acf_a], f"band ±{2/np.sqrt(n):.2f}")
+```
+
+**Findings to expect (real GLD):** n≈4,600; mean small positive, SD
+~1.1%; skew near zero to slightly negative; κ ~2–6 (fatter than normal,
+*milder* than equities); rolling vol with distinct regimes (2008, 2011,
+2020, 2022); |r| ACF positive at 0.05–0.15 (clustering present but
+weaker than equities — gold's "independence" is a spectrum, not a
+fact).
+
+## E2 — the QQ bend, localized
+
+```python
+core = r[(r > r.quantile(0.05)) & (r < r.quantile(0.95))]
+zc = np.sort((r - core.mean()) / core.std())
+q = st.norm.ppf((np.arange(n)+0.5)/n)
+plt.scatter(q, zc, s=3); plt.plot([-4,4],[-4,4],"r--"); plt.show()
+# where does empirical exceed 1.5x model?
+mask = q > 0.5
+print(f"right-tail: empirical/model first exceeds 1.5 at z ≈ "
+      f"{q[mask][np.argmax(zc[mask]/q[mask] > 1.5) if (zc[mask]/q[mask] > 1.5).any() else -1]:.2f}")
+```
+
+**Expected reasoning.** Fitted on the central 90%, the normal still
+under-predicts both tails beyond ~1.5–2σ: the departure starts *before*
+the extreme quantiles — **fat tails are a shoulder phenomenon too**, not
+only a handful of crashes. If your central-fit QQ hugs the line to 2.5σ
+and only bends at 3σ+, your asset's non-normality lives in a few days;
+if it bends by 1.5σ, the whole shape is off. Different diagnoses,
+different models.
+
+## E3 — verdict paragraph (exemplar, real GLD)
+
+> "GLD daily returns (n = 4,600, 2006–2024, QRC data mirror): mean
+> +0.03% ± 0.02%, SD 1.1%, skew −0.1 ± 0.07, excess kurtosis 3.4 ±
+> 0.07. QQ departs from normality at z ≈ ±2, symmetric. Volatility
+> clusters (|r| ACF₁ = 0.09 vs band ±0.03) with regimes (2008, 2020).
+> Rolling 63d mean crosses zero repeatedly — consistent with
+> constant-μ noise. The distribution resembles a t(6) with near-zero
+> skew. Normal VaR is disqualified at 99% (tail multiple ~3×); iid
+> simulation is borderline-defensible for drawdowns at monthly
+> horizons."
+
+## E4 — explore-then-test (exemplar)
+
+(a) H: Var(Wednesday returns) > Var(other weekdays). (b) Test: an
+F-style ratio or Levene test on Wednesday vs non-Wednesday |r|, on
+pre-registered window A; confirm on window B with multiplicity control
+for the 5 weekdays implicitly scanned (Bonferroni: α/5). (c) The
+sophomore trades it — sizing up Wednesdays — on 15 years of in-sample
+noise: 5 hypotheses, one odd-looking, zero out-of-sample. The pattern
+is a draw, and the trade pays for it.

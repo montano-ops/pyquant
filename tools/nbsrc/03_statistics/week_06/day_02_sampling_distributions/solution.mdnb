@@ -1,0 +1,109 @@
+# Day 2 — Solution: Sampling Distributions
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    px = get_prices("SPY", start="1993-01-01")
+else:
+    px = synthetic_prices(n_days=8000, n_assets=1, seed=32)
+    px.columns = ["SPY"]
+r = px["SPY"].pct_change().dropna()
+```
+
+## E1 — the price list vs reality
+
+```python
+rng = np.random.default_rng(0)
+vals = r.values
+for n in [63, 252, 1008]:
+    idx = rng.integers(0, len(vals), (1500, n))
+    samples = vals[idx]
+    m, s = samples.mean(axis=1), samples.std(axis=1)
+    z = (samples - m[:, None]) / s[:, None]
+    sk = (z ** 3).mean(axis=1)
+    ku = (z ** 4).mean(axis=1) - 3
+    print(f"n={n:5d} | mean: sim {m.std():.5f} vs {vals.std()/np.sqrt(n):.5f} | "
+          f"SD: sim {s.std():.5f} vs {vals.std()/np.sqrt(2*n):.5f} | "
+          f"skew: sim {sk.std():.3f} vs {np.sqrt(6/n):.3f} | "
+          f"kurt: sim {ku.std():.3f} vs {np.sqrt(24/n):.3f}")
+```
+
+**Expected reasoning.** Mean and SD SEs match their formulas well
+(bootstrap-from-empirical is honest for low moments). Skew/kurt SEs run
+*LARGER* than the normal-theory formulas on real (fat-tailed) data —
+the formulas assume normal parents, and fourth moments of fat-tailed
+data are themselves fat-tailed. **The price list is a floor: real
+sampling noise on shape statistics is worse than advertised.**
+(Caveat: this bootstrap assumes iid days — with clustering, everything
+widens further.)
+
+## E2 — the quantile catastrophe
+
+```python
+rng = np.random.default_rng(1)
+for p in [0.05, 0.01, 0.005]:
+    est = np.quantile(vals[rng.integers(0, len(vals), (1500, 252))], p, axis=1)
+    print(f"p={p}: estimate {np.mean(est):.3%} ± {np.std(est):.3%} "
+          f"(relative {np.std(est)/abs(np.mean(est)):.0%})")
+```
+
+**Expected numbers.** p5: SE ≈ 0.1–0.15% on an estimate of ~−1.6%
+(~8% relative). p1: SE ≈ 0.2–0.35% on ~−2.5% (10–15% relative). p0.5:
+relative SE grows past 20% — the estimate is becoming a report about
+2–3 specific days. To get p1's relative SE down to 10% you need to
+shrink the SE ~2× → n ~ 4× ≈ 1,000 days — **four years to measure one
+VaR number to ±10%.** That is the price of tail estimation, and why
+risk systems use parametric/EVT overlays rather than raw empirical
+quantiles at short windows.
+
+## E3 — estimator duel
+
+```python
+rng = np.random.default_rng(2)
+truth_sd = vals.std()
+lo, hi = np.quantile(vals, [0.01, 0.99])
+
+def winsor(x):
+    return np.clip(x, np.quantile(x, 0.01), np.quantile(x, 0.99))
+
+rows = []
+for _ in range(1000):
+    s = vals[rng.integers(0, len(vals), 252)].copy()
+    s[rng.integers(0, 252, 3)] = -0.15
+    rows.append([s.std(), winsor(s).std()])
+res = np.array(rows)
+print(f"plain SD:   bias {res[:,0].mean()-truth_sd:+.5f}, SD {res[:,0].std():.5f}, "
+      f"MSE {((res[:,0]-truth_sd)**2).mean():.8f}")
+print(f"winsor SD:  bias {res[:,1].mean()-truth_sd:+.5f}, SD {res[:,1].std():.5f}, "
+      f"MSE {((res[:,1]-truth_sd)**2).mean():.8f}")
+```
+
+**Expected reasoning.** Plain SD: huge upward bias under contamination
+(+10–20%), low variance. Winsorized: modest downward bias (it caps real
+tails too, −5–8%), much lower variance — and typically WINS on MSE.
+**The trade: accept a known, one-directional bias (you will understate
+vol ~5%) in exchange for immunity to contamination.** That is
+deliberate bias — the acceptable kind — *if and only if* everyone
+knows the estimator is winsorized. The same trade with disclosure
+missing is a risk report that lies.
+
+## E4 — the footnote (exemplar)
+
+"±0.3pp: the 250-day empirical 1% quantile's own sampling error is
+roughly ±0.25–0.35pp — a 2.8% VaR could honestly be 2.5–3.1% in the
+next sample. And the window is one regime: if the last year was calm,
+this number describes the calm regime, not next quarter's."

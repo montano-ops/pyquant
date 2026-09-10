@@ -1,0 +1,132 @@
+# Day 12 — Solution: Missing Data & Frequency
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    px = get_prices(["SPY", "TLT", "EEM", "EWJ"], start="2005-01-01")
+else:
+    px = synthetic_prices(n_days=4000, n_assets=4, seed=41, corr=0.3)
+    px.columns = ["SPY", "TLT", "EEM", "EWJ"]
+```
+
+## E1 — the NaN crisis
+
+```python
+rng = np.random.default_rng(13)
+px2 = px.copy()
+drop_idx = px2["EEM"].sample(frac=0.08, random_state=1).index
+px2.loc[drop_idx, "EEM"] = np.nan
+
+ret_true = px.pct_change()
+ret_drop = px2.pct_change().dropna()
+ret_zero = px2.pct_change().fillna(0.)
+ret_ffill = px2.ffill().pct_change()
+
+for nm, rr in [("dropna", ret_drop), ("fill0", ret_zero), ("ffill", ret_ffill)]:
+    print(f"{nm:7s}: n={len(rr.dropna()):5d} | EEM vol {rr['EEM'].std():.4f} | "
+          f"corr(EEM,SPY) {rr['EEM'].corr(rr['SPY']):+.2f}  "
+          f"(true: n={len(ret_true)}, vol {ret_true['EEM'].std():.4f}, "
+          f"corr {ret_true['EEM'].corr(ret_true['SPY']):+.2f})")
+```
+
+**Expected reasoning.** dropna: loses ~8% of ALL rows (every EEM hole
+deletes 3 assets' data) — the least-biased per-statistic but the most
+destructive per-panel. fill0: EEM vol collapses (fake calm days), and
+correlation vs SPY shrinks (the zero-days add no covariance — the
+co-movement is diluted). ffill: prices frozen → zero returns on gap
+days, then a doubled-up jump when data returns — vol biased down AND
+jump mis-attributed to the wrong day. **Ranking by damage: fill0 ≈
+worst (fabricates calm AND breaks correlation), ffill (biased vol,
+shifted timing), dropna (honest but wasteful — and in real panels,
+holes cluster in crises: MNAR makes dropna quietly biased too).**
+
+## E2 — the stale-price trap
+
+```python
+r = px["SPY"].pct_change().dropna()
+stale_mask = rng.random(len(r)) < 0.30
+stale = r.copy(); stale[stale_mask] = 0.0
+traded = stale[~stale_mask]
+def kurt(x):
+    z = (x - x.mean())/x.std(); return (z**4).mean() - 3
+print(f"stale-series: vol {stale.std():.4f} skew {stale.skew():+.2f} kurt {kurt(stale.values):.1f}")
+print(f"traded-days:  vol {traded.std():.4f} skew {traded.skew():+.2f} kurt {kurt(traded.values):.1f}")
+print(f"true:         vol {r.std():.4f} skew {r.skew():+.2f} kurt {kurt(r.values):.1f}")
+```
+
+**Expected reasoning.** The stale series shows vol ~√0.7 ≈ 84% of true
+(zeros dilute the variance), skew/kurt compressed toward calm-normal.
+Traded-day statistics show vol ~1.2× true (the jump risk concentrated
+on trading days). **The risk book wants the traded-day distribution
+expressed per calendar day (bigger tail events, fewer of them);
+the marketing book quotes the stale series (calm). Same asset, two
+stories — the average of the two is the honest per-calendar-day vol,
+and the gap between them IS the liquidity-risk premium you're being
+asked to underprice.**
+
+## E3 — aggregational Gaussianity, measured
+
+```python
+r = px["SPY"].pct_change().dropna()
+def kurt(x):
+    z = (x - x.mean())/x.std(); return (z**4).mean() - 3
+for nm, s in [("daily", r), ("weekly", r.resample("W").sum()),
+              ("monthly", r.resample("ME").sum()), ("quarterly", r.resample("QE").sum())]:
+    s = s.dropna()
+    print(f"{nm:9s}: n={len(s):5d} kurt {kurt(s.values):+6.1f} ± {np.sqrt(24/len(s)):.1f}")
+```
+
+**Expected sight (real SPY):** daily κ ≈ 12±0.1 → weekly ≈ 3±0.4 →
+monthly ≈ 1±0.9 → quarterly ≈ 0.5±1.5 (n≈80: the estimate dissolves
+into its own SE before it reaches zero). **κ crosses "statistically
+indistinguishable from normal" around monthly frequency — not because
+the tails healed, but because n ran out.** That is the trap inside
+"monthly returns are normal enough": the test lost power, the tails
+are still there (2008 Q4: three bad months in a row).
+
+## E4 — the √t trap
+
+```python
+r = px["SPY"].pct_change().dropna()
+p_daily = (r < -0.05/np.sqrt(21)).mean()
+m21 = r.rolling(21).sum().dropna()
+p_month = (m21 < -0.05).mean()
+print(f"P(daily < -5%/√21) = {p_daily:.2%} -> naive monthly prediction {p_daily:.2%}")
+print(f"P(21-day sum < -5%) = {p_month:.2%}  ratio {p_month/p_daily:.2f}")
+```
+
+**Expected reasoning.** The empirical 21-day loss probability exceeds
+the √t-scaled daily probability — typically by 1.5–3× at the 5%
+threshold (exact numbers window-dependent). Mechanism: bad days
+cluster (vol persistence + crash herds), so 21-day sums fatten the
+left tail beyond what independent daily draws imply. **Scaling daily
+VaR to monthly by √21 systematically understates monthly tail risk —
+the direction of every 2008-era risk-model obituary.**
+
+## E5 — the pitch-deck audit (exemplar)
+
+Legitimate: annualizing matters, and a monthly-rebalance strategy's
+per-month statistics are the natural unit (frequency-by-decision, day
+12's table). Hiding: (1) the two Sharpes are estimates of the SAME
+quantity with different noise — monthly n=60 is noisier (SE of Sharpe
+scales ~1/√T years regardless of sampling frequency); picking the
+higher one is cherry-picking the draw, not a "true horizon"; (2)
+monthly aggregation hides daily fat tails (aggregational Gaussianity)
+— the 0.7 daily number is *more* honest about risk; (3) "true horizon"
+claims deserve a test (autocorrelation of monthly vs daily strategy
+returns), not a preference. The correct sentence: "Sharpe ≈ 0.7–1.1
+across samplings, SE ≈ 0.15; we report both."
