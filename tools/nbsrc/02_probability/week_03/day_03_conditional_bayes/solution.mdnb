@@ -1,0 +1,98 @@
+# Day 3 — Solution: Conditional Probability & Bayes
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+plt.rcParams["figure.figsize"] = (10, 4)
+```
+
+## E1 — Bayes by hand
+
+```python
+def bayes(prior, likelihood, false_alarm):
+    evidence = likelihood * prior + false_alarm * (1 - prior)
+    return likelihood * prior / evidence
+
+for prior in [0.01, 0.03, 0.15]:
+    print(f"prior {prior:.0%}: posterior {bayes(prior, 0.85, 0.12):.1%}")
+```
+
+By hand at 3%: (0.85×0.03)/(0.85×0.03 + 0.12×0.97) = 0.0255/0.1429 ≈ 17.8%.
+At 1%: 7.9%. At 15%: 55.6%. **The posterior moves nearly 7× from a 15×
+prior change — and at realistic rare-event base rates, even an excellent
+signal leaves you mostly wrong when it fires.** Rare-event trading is a
+business of paying small costs often to avoid rare huge losses — the
+posterior, not the hit rate, decides whether that trade is +EV.
+
+## E2 — the confusion matrix, simulated
+
+```python
+rng = np.random.default_rng(7)
+N = 10_000
+event = rng.random(N) < 0.03
+fires = np.where(event, rng.random(N) < 0.85, rng.random(N) < 0.12)
+
+tp, fp = (fires & event).sum(), (fires & ~event).sum()
+fn, tn = (~fires & event).sum(), (~fires & ~event).sum()
+print(f"hits {tp}, false alarms {fp}, misses {fn}, calm {tn}")
+print(f"P(event|fires) simulated: {tp / (tp + fp):.3f} vs Bayes {bayes(0.03, 0.85, 0.12):.3f}")
+
+pnl = fires * (-0.0015) + (fires & event) * 0.08   # cost when fired; saved 8% on true events
+print(f"expected P&L per period: {pnl.mean():+.4%}")
+```
+
+The strategy loses ~0.11% per period: 12% false-alarm drag (0.12 × 0.97 ×
+0.15%) swamps the 3% × 85% × 8% rescue. **A signal can be genuinely
+informative (posterior 18% vs prior 3% — sixfold lift!) and still be
+untradeable at those costs.** Lift ≠ edge.
+
+## E3 — the volatility signal
+
+```python
+import os
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    px = get_prices("SPY", start="2005-01-01")
+else:
+    px = synthetic_prices(n_days=4000, n_assets=1, seed=14)
+    px.columns = ["SPY"]
+r = px["SPY"].pct_change().dropna()
+
+vol21 = r.rolling(21).std().shift(1)            # known BEFORE the day
+sig = vol21 > vol21.quantile(0.8)
+loss = r < -0.02                                 # stated choice: absolute -2%
+
+tab = pd.crosstab(sig.reindex(r.index).fillna(False), loss, normalize="index")
+p0, p1 = loss.mean(), loss[sig.reindex(r.index).fillna(False)].mean()
+print(f"P(loss)={p0:.3%}  P(loss|high vol)={p1:.3%}  lift {p1 / p0:.1f}x")
+```
+
+**Expected reasoning.** Real SPY: P(−2% day) ≈ 2–3%; conditional on
+trailing high vol, ~5–8% — a real 2–3× lift, consistent with vol
+clustering. Whether it's hedge-worthy depends on hedge cost vs avoided
+loss — E2's arithmetic, with real numbers. **The honest conclusion is
+always two-sided: informative AND (maybe) untradeable.**
+
+## E4 — the yield-curve reply (exemplar)
+
+"7 of 8 recessions were preceded by inversions" is P(inversion |
+recession) ≈ 87%. Before acting you need the other column: P(inversion |
+no-recession) — how often inversions occur *without* a recession — and the
+base rate of recessions. If inversions happened 12 times and recessions 8,
+then 4 inversions were false alarms; and if recessions are rare per
+decade, the posterior P(recession | inversion) may be ~60–70%, on a
+slow, noisy lag — an actionable-but-humble number, not a certainty. The
+2×2 table, always.

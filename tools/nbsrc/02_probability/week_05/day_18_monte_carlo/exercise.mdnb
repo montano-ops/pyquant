@@ -1,0 +1,81 @@
+# Day 18 — Exercise: Monte Carlo & the Bootstrap
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+plt.rcParams["figure.figsize"] = (10, 4)
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+from qrc import synth
+```
+
+## E1 (L4) — Parallel histories, parametric
+
+Monte Carlo 5,000 one-year histories from N(0.0004, 0.011). Report the
+distribution of the *year's realized Sharpe* (mean/SD × √252 per path).
+How wide is it? What fraction of years of a TRUE Sharpe-0.6 process look
+like Sharpe < 0?
+
+```python
+rng = np.random.default_rng(30)
+# YOUR CODE
+```
+
+## E2 (L4) — The bootstrap mean, from data
+
+Bootstrap the mean daily return of SPY (2010→): 5,000 resamples (with
+replacement!), 95% CI. Compare the CI width with the CLT formula
+$\bar r ± 1.96·s/\sqrt n$. Close? Why is this agreement itself evidence
+the CLT works here?
+
+```python
+# YOUR CODE
+```
+
+## E3 (L5) — Method validation on known truth
+
+Use `synth.synthetic_returns(n_days=2500, drift_spread=0.0, seed=...)` —
+by construction NO drift differences... then with drift_spread=0.0008 —
+real cross-sectional differences. Test: can a "rank by past 6-month
+return, hold top half" strategy detect the true drift spread in the
+second case? What's its false-alarm rate in the first (null) case over
+100 seeds? (You are computing a strategy's power and size — module 13's
+deflated logic, seeded early.)
+
+```python
+# YOUR CODE
+```
+
+## E4 (L7) — What the plain bootstrap corrupts
+
+Bootstrap SPY's max drawdown: plain resample vs block bootstrap (block
+length 21). Compare the two distributions of max drawdown. Which one lies,
+and about what?
+
+```python
+def block_bootstrap_idx(n, block_len, rng):
+    starts = rng.integers(0, n - block_len, n // block_len + 1)
+    return np.concatenate([np.arange(s, s + block_len) for s in starts])[:n]
+# YOUR CODE
+```
+
+## Hints
+
+- E1: Sharpe per path = path.mean()/path.std()*√252; expect SD ≈ 1/√years.
+- E3: loop over seeds; measure the spread's mean return difference vs
+  2×SE to classify detection.
+- E4: plain resampling destroys vol clustering → drawdowns too *shallow*
+  AND too uniform; blocks restore depth.

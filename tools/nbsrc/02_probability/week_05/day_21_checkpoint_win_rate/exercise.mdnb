@@ -1,0 +1,84 @@
+# Day 21 — Module Checkpoint: Is a 55% Win Rate Luck?
+
+*Your workspace. Attempt all six parts before opening the solution. The
+memo is the deliverable.*
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+from scipy import stats
+```
+
+## Part 1 — Exact
+
+P(≥ 138 wins | n=252, p=0.5), exact binomial. State in plain words what
+this number is and is not.
+
+```python
+# YOUR CODE
+```
+
+## Part 2 — Approximation
+
+The normal-approximation z and one-sided p. Compare with Part 1; explain
+the (small) gap.
+
+```python
+# YOUR CODE
+```
+
+## Part 3 — Simulation
+
+100,000 simulated years of 252 fair-coin days; fraction with ≥138 wins.
+All three must agree to ~two significant figures.
+
+```python
+# YOUR CODE
+```
+
+## Part 4 — Power
+
+True p = 0.53: P(year shows ≥138 wins)? P(a genuinely skilled 0.53
+trader has a sub-50% year)? What do these two numbers say about *absence
+of evidence* vs *evidence of absence*?
+
+```python
+# YOUR CODE
+```
+
+## Part 5 — Dependence caveat
+
+Win-day indicators share regimes. In which direction does this shift your
+Part 1 conclusion, and why can't you compute the correction from win
+counts alone? (n_eff argument, in words + formula.)
+
+```python
+# Your answer:
+```
+
+## Part 6 — The client memo
+
+Write it: findings, limits, and the evidence that *would* settle the
+question. End with the quotable sentence.
+
+```python
+# Your memo:
+```
+
+## Hints (only if truly stuck)
+
+- Part 1: `1 - stats.binom.cdf(137, 252, 0.5)`.
+- Part 4: `1 - stats.binom.cdf(137, 252, 0.53)` for the first;
+  `stats.binom.cdf(125, 252, 0.53)` for the sub-50% year.
+- Part 5: dependence → n_eff < n → SE wider → same z is weaker evidence.

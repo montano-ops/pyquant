@@ -1,0 +1,87 @@
+# Day 4 — Solution: Random Variables & Distributions
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import scipy.stats as st
+plt.rcParams["figure.figsize"] = (10, 4)
+import os
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    px = get_prices("SPY", start="2010-01-01")
+else:
+    px = synthetic_prices(n_days=3000, n_assets=1, seed=15)
+    px.columns = ["SPY"]
+r = px["SPY"].pct_change().dropna()
+```
+
+## E1 — normal-model arithmetic
+
+```python
+mu, sd = 0.0004, 0.011
+print(f"P(r>1%)  = {1 - st.norm.cdf(0.01, mu, sd):.4f}")
+print(f"P(r<-1%) = {st.norm.cdf(-0.01, mu, sd):.4f}")
+print(f"P(-0.5%<r<0.5%) = {st.norm.cdf(0.005, mu, sd) - st.norm.cdf(-0.005, mu, sd):.4f}")
+print(f"1% left tail: {st.norm.ppf(0.01, mu, sd):.4%}")
+```
+
+P(r>1%) ≈ 0.24%; symmetric left tail; the ±0.5% band ≈ 0.5σ → ≈ 38%;
+1%-tail return ≈ −2.5%. Every number here is *model output* — the
+exercise's quiet lesson: the model decides the tail, so the model choice
+is a risk decision.
+
+## E2 — the ECDF, and where models break
+
+```python
+x = np.sort(r.values)
+ecdf = np.arange(1, len(x) + 1) / len(x)
+model = st.norm.cdf(x, r.mean(), r.std())
+
+plt.plot(x, ecdf, label="empirical CDF")
+plt.plot(x, model, "--", label="normal model CDF")
+plt.axvline(np.percentile(r, 5), color="red", ls=":", label="empirical 5th pct")
+plt.legend(); plt.xlabel("daily return"); plt.show()
+print(f"5th percentile: empirical {np.percentile(r, 5):.3%} vs "
+      f"normal {st.norm.ppf(0.05, r.mean(), r.std()):.3%}")
+```
+
+**Expected reasoning.** The curves agree in the center (most of the mass —
+the normal is a fine *central* model) and disagree in the tails: the
+empirical CDF is *above* the model on the left (more probability of very
+bad days than modeled) and above it on the right too (more extreme
+gains). The empirical 5th percentile is typically 10–30% worse than the
+normal's. **Location of disagreement = the story.**
+
+## E3 — models are claims
+
+(a) *Symmetry*: compare P(r < −x) vs P(r > x) across x, or the mean-vs-
+median gap; real daily returns: mean ≈ median but the extreme left
+dominates the extreme right (skew < 0). (b) *Thin tails*: count |z| > 3:
+real data ~1–2% vs 0.27% — verdict: decisively fat-tailed. (c) *Constant
+σ*: rolling 21-day vol swings by a factor of 3–5 across the sample —
+verdict: badly violated. **Three claims, three refutations, all from
+tools you already own.** Module 03 does this formally; you've done the
+substance.
+
+## E4 — two failure modes of the empirical 1% VaR
+
+(1) *Sample noise at the extreme*: the 1st percentile of 250 observations
+is essentially the 2nd–3rd worst day — its own sampling error is enormous,
+and the next 250 days redraw it wildly. (2) *Regime dependence*: if the
+last year was calm, the tail estimate describes the calm regime; entering
+a storm, the true 1% quantile can be 2–3× worse. Both push the same
+direction: empirical tail estimates from short windows are optimistic
+exactly when it matters.

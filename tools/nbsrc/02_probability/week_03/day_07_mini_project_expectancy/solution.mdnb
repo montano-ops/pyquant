@@ -1,0 +1,91 @@
+# Day 7 — Solution: The Expectancy Simulator (exemplar)
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+plt.rcParams["figure.figsize"] = (10, 4)
+```
+
+## The simulator
+
+```python
+def simulate_paths(p, W, L, n_days, n_sims, seed=0):
+    rng = np.random.default_rng(seed)
+    wins = rng.random((n_sims, n_days)) < p
+    return np.where(wins, W, -L)
+
+assert (simulate_paths(1.0, 0.01, 0.99, 10, 5) == 0.01).all()
+```
+
+## The distribution of outcomes — (0.55, ±1%)
+
+```python
+pnl = simulate_paths(0.55, 0.01, 0.01, 252, 1000, seed=42)
+final = np.prod(1 + pnl, axis=1)
+exp_level = (1 + 0.55 * 0.01 - 0.45 * 0.01) ** 252
+
+plt.hist(final, bins=50); plt.axvline(np.median(final), color="orange", label="median")
+plt.axvline(exp_level, color="red", label="expectation level")
+plt.legend(); plt.title("Final wealth, 1000 simulated years"); plt.show()
+print(f"median {np.median(final):.3f} | 5th pct {np.percentile(final, 5):.3f} "
+      f"| P(loss) {(final < 1).mean():.1%}")
+print(f"mean year-end {final.mean():.4f} vs SD {final.std():.4f}")
+```
+
+**Q1 — expected numbers.** Expectancy +0.10%/day compounds to ≈ 1.29×
+("expectation level"), yet ~7% of years still end below 1.0 — and about
+1 month in 3 is a losing month. Reconciliation: the year's total log
+return has mean 252·μ_log ≈ +0.24 but SD ≈ √252·σ ≈ 0.16 — signal grows
+like n, noise like √n, so P(losing year) = P(z < −0.24/0.16) ≈ 7%, and
+at the 21-day horizon P(z < −0.02/0.046) ≈ 33%. **Positive expectancy
+survives at the annual scale but is a coin flip monthly. That is the
+result.**
+
+## Q2 — the slightly-worse edge
+
+```python
+for p_ in [0.55, 0.52]:
+    pnl = simulate_paths(p_, 0.01, 0.01, 252, 1000, seed=43)
+    final = np.prod(1 + pnl, axis=1)
+    print(f"p={p_}: mean final {final.mean():.3f}, median {np.median(final):.3f}, "
+          f"P(loss) {(final < 1).mean():.1%}")
+```
+
+p=0.52 cuts the daily edge to +0.04% and multiplies the losing-year
+probability ~5× (≈31%, and ~42% of months lose). In live trading you'd
+notice the losing frequency long before the mean drift — **experience samples the
+distribution's bad half far more saliently than its mean, so traders
+abandon good strategies and keep bad ones based on month-scale noise**
+(the law of small numbers, operationalized).
+
+## Q3 — asymmetric pay
+
+(0.55, W=1.2%, L=1%): expectancy = 0.55×1.2 − 0.45×1.0 = +0.21%/day —
+*double* the symmetric case (say so in your write-up — an honest
+comparison either matches expectancy or explains the difference).
+Var = p(1−p)(W+L)² = 0.2475 × 0.022² ≈ 1.2e−4 vs 0.2475 × 0.02² ≈ 9.9e−5
+— ~20% more variance at double the edge.
+
+```python
+pnl = simulate_paths(0.55, 0.012, 0.01, 252, 1000, seed=44)
+final = np.prod(1 + pnl, axis=1)
+print(f"asym: mean {final.mean():.3f}, P(loss) {(final < 1).mean():.1%}")
+print(f"var check: {pnl.var():.8f} vs formula {0.55*0.45*(0.022)**2:.8f}")
+```
+
+**Reflection (exemplar).** "A backtest must be judged on the distribution
+of its parallel histories, not its one realized path: the losing-year
+probability at stated edge, the drawdown distribution, and the n behind
+every rate. Monthly, I'd re-run this simulator with my *live* p, W, L and
+check the realized path against its Monte Carlo band — drift outside the
+band, not a bad month, is the firing signal."

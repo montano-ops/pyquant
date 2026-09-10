@@ -1,0 +1,90 @@
+# Day 7 — Mini-Project: The Expectancy Simulator
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+plt.rcParams["figure.figsize"] = (10, 4)
+```
+
+## 1. The simulator
+
+```python
+def simulate_paths(p, W, L, n_days, n_sims, seed=0):
+    """Return (n_sims, n_days) array of daily P&L: +W w.p. p else -L."""
+    rng = np.random.default_rng(seed)
+    # YOUR CODE (one rng.choice or rng.random comparison, vectorized over
+    # the whole (n_sims, n_days) array — no Python loops)
+    ...
+```
+
+Requirements: vectorized (no loops over sims), seeded, and self-tested —
+`simulate_paths(1.0, 0.01, 0.99, 10, 5)` must be all +W.
+
+## 2. The distribution of outcomes
+
+For (p, W, L) = (0.55, 0.01, 0.01): 1,000 paths × 252 days. Histogram of
+final wealth (log-spaced bins help); report median, 5th percentile,
+P(final < 1). Mark the "expectation says" level $(1 + pW - (1-p)L)^{252}$.
+
+```python
+# YOUR CODE
+```
+
+## 3. Q1 — reconcile
+
+Answer in the markdown cell: what fraction of years lose money? Explain
+the coexistence of positive expectancy and losing years using the √n-vs-n
+argument (quantify: mean year-end vs SD of year-end).
+
+```python
+# Your answer:
+```
+
+## 4. Q2 — the slightly-worse edge
+
+Repeat for p = 0.52. Report: mean final wealth (both), P(losing year)
+(both). Which change would a trader notice first in live trading, and why
+is that dangerous?
+
+```python
+# YOUR CODE + answer:
+```
+
+## 5. Q3 — asymmetric pay at equal expectancy
+
+(0.55, 1.2%, 1%): same expectancy as... compute it — is it equal to the
+(0.55, ±1%) case? Compare P(losing year). Explain via
+Var = p(1−p)(W+L)² (verify the variance formula numerically too).
+
+```python
+# YOUR CODE + answer:
+```
+
+## 6. Reflection
+
+Three sentences: what this does to your standards for "the backtest looks
+good" — and the one simulation you'd run on any live strategy monthly.
+
+```python
+# Your answer:
+```
+
+## Hints
+
+- 2: `final = np.prod(1 + pnl, axis=1)`; expectation level via the
+  compound factor.
+- 5: expectancy 0.55×1.2 − 0.45×1.0 = +0.21% vs 0.55×1 − 0.45×1 = +0.10%
+  — NOT equal; if you want equal, solve for L. (Decide which comparison
+  you're making and say so — ambiguous comparisons are a research sin.)

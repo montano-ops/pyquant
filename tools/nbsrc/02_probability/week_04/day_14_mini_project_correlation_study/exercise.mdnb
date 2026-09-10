@@ -1,0 +1,79 @@
+# Day 14 — Mini-Project: The Correlation Study
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+plt.rcParams["figure.figsize"] = (10, 4)
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+from qrc.universe import load_universe
+
+if DATA_SOURCE == "real":
+    tickers = load_universe("core_etfs")
+    px = get_prices(tickers, start="2006-01-01")
+else:
+    tickers = [f"S{i}" for i in range(10)]
+    px = synthetic_prices(n_days=3000, n_assets=10, seed=77, corr=0.3)
+    px.columns = tickers
+r = px.pct_change().dropna()
+```
+
+## Part 1 — The headline matrix, honestly
+
+Correlation matrix; SE per pair ((1−ρ̂²)/√T); which pairs are
+indistinguishable from zero? With N(N−1)/2 pairs examined, how many
+|ρ̂|>2SE do you expect by pure luck — and how many do you see?
+
+```python
+# YOUR CODE
+```
+
+## Part 2 — The rolling window
+
+1-year rolling correlations for the highest-ρ pair and the most
+diversifying pair: min, max, sign-flip fraction vs the full sample value.
+
+```python
+# YOUR CODE
+```
+
+## Part 3 — The stress test
+
+Worst 10% of days for SPY (by return). Recompute the matrix on those days
+only. Average pairwise correlation: all days vs worst days. Also: the
+average pairwise correlation of *rolling 21-day vols* on those days (do
+vols correlate too?).
+
+```python
+# YOUR CODE
+```
+
+## Part 4 — The write-up
+
+One page in the markdown cell: three exhibits + readings; the 60/40-style
+paragraph; the bias audit (period, survivorship, multiplicity).
+
+```python
+# Your write-up:
+```
+
+## Hints
+
+- Part 3: worst days mask on returns index; the vol-correlation extra is
+  the difference between "diversification fails" and "everything fails
+  together".
+- Report every ρ with its T; rolling windows lose the first 251 days —
+  say so in the write-up.

@@ -1,0 +1,81 @@
+# Day 9 — Exercise: Joint Distributions & Two-Asset Portfolios
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+plt.rcParams["figure.figsize"] = (10, 4)
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+```
+
+## E1 (L3) — Var of a sum, by simulation
+
+Two assets (μ=0.05%, σ=1.2% and μ=0.03%, σ=0.9%), independent. Simulate
+100k days. Verify Var(X+Y) = VarX + VarY (independence case), and show the
+SDs add as √(VarX+VarY) — the √n law's proof, witnessed.
+
+```python
+rng = np.random.default_rng(3)
+# YOUR CODE
+```
+
+## E2 (L4) — The correlation term, activated
+
+Same two σs but ρ = 0.5 (construct y = 0.5·(σ₂/σ₁)·x + noise — derive the
+noise weight!). Verify Var(X+Y) now includes the covariance term; compute
+the 50/50 portfolio vol for ρ ∈ {−1, −0.5, 0, 0.5, 1} in one table.
+
+```python
+# YOUR CODE
+```
+
+## E3 (L5) — The frontier, on real data
+
+SPY & TLT (2010→): σ₁, σ₂, ρ from data. Plot portfolio vol vs weight on
+SPY (0→1). Mark the min-vol weight; verify it is NOT 100% in the
+lower-vol asset (as long as ρ<1). Also compute and mark the equal-weight
+vol.
+
+```python
+# YOUR CODE
+```
+
+## E4 (L5) — The optimal hedge, measured
+
+Find the weight b on TLT minimizing Var(SPY + b·TLT) from data (scan b
+from −1 to 1); compare with −Cov/Var. Report unhedged vs hedged vol.
+(This b is minus the regression slope — day 11-module-01 déjà vu.)
+
+```python
+# YOUR CODE
+```
+
+## E5 (L7) — The 2009 question
+
+A long-short momentum book: long winners, short losers, roughly equal
+vols, historical ρ(W,L) ≈ −0.1. In a crash-rebound, both legs' behavior
+correlates +0.8. Explain in one paragraph (with the variance formula) how
+the spread's risk explodes even though each leg alone behaves.
+
+```python
+# Your answer:
+```
+
+## Hints
+
+- E2: to build y with correlation ρ: y = ρ·(σ₂/σ₁)·x + σ₂·√(1−ρ²)·z with
+  z independent standard normal.
+- E4: `b_grid = np.linspace(-1, 1, 401)`; variance of the sum per b.

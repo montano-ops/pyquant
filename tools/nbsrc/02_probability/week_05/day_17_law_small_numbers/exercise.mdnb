@@ -1,0 +1,79 @@
+# Day 17 — Exercise: The Law of Small Numbers
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+from scipy import stats
+plt.rcParams["figure.figsize"] = (10, 4)
+```
+
+## E1 (L3) — The consistent range, computed
+
+Observed 65% win rate. For n = 20, 60, 250, 1000: what true win rates are
+consistent with the observation (2SE band)? Present as a table. One
+sentence: what does this do to "my system wins 65% of the time"?
+
+```python
+# YOUR CODE
+```
+
+## E2 (L4) — Streaks happen
+
+Fair coin, 250 flips: simulate 10,000 runs; report the distribution of
+the longest run of heads (or wins). What's the median longest streak?
+P(longest streak ≥ 8)? Now: a trader shows you 8 wins in a row as
+evidence. Your reply, with numbers?
+
+```python
+rng = np.random.default_rng(21)
+# YOUR CODE
+```
+
+## E3 (L4) — The 500 gurus, reproduced
+
+500 fair "strategies", 250 days each: distribution of best win rate;
+count above 55%. Then add selection-on-belief: suppose only strategies
+whose *first 50 days* looked good get tracked for the full year — does the
+survivor set's full-year win rate regress toward 50%? Quantify the
+regression.
+
+```python
+# YOUR CODE
+```
+
+## E4 (L6) — Paper-trade protocol design
+
+Design (in writing) a pre-committed evaluation protocol for a new
+strategy: sample size, stopping rule, what counts as success (give the z
+threshold), and what you'll do on ambiguity. 150 words, no code.
+
+```python
+# Your protocol:
+```
+
+## E5 (L7) — Self-diagnosis
+
+Where does the law of small numbers most plausibly live in YOUR judgment?
+Name the specific situation and the computation that guards it.
+
+```python
+# Your answer:
+```
+
+## Hints
+
+- E2: longest run — a neat trick: split the flip string and take max run
+  length; or track runs in a loop.
+- E3: `first50 = wins[:, :50].mean(1); full = wins.mean(1)`; compare full
+  among those with first50 > 0.6 vs everyone.

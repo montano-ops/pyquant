@@ -1,0 +1,75 @@
+# Day 1 — Exercise: Random Experiments & Events
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+plt.rcParams["figure.figsize"] = (10, 4)
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+```
+
+## E1 (L2) — Make the vague measurable
+
+Rewrite each as a precise event (inequality on a named variable), or say
+what's missing: (a) "a crash", (b) "the signal works", (c) "volume is
+unusual", (d) "the market is overvalued".
+
+```python
+# (a)
+# (b)
+# (c)
+# (d)
+```
+
+## E2 (L4) — Frequencies are probabilities, noisily
+
+Simulate 100,000 draws from a toy daily-return model
+N(0.0004, 0.011). Estimate P(r > 1%), P(r < −1%), P(|r| > 1%). Then repeat
+the estimation with only 100 draws — 500 times — and plot the *distribution*
+of your P(r>1%) estimates. What is the lesson about small samples?
+
+```python
+rng = np.random.default_rng(0)
+# YOUR CODE
+```
+
+## E3 (L5) — Events on real data
+
+Load SPY daily returns (2015→). Compute the empirical frequency of: up
+days; days beyond ±2 daily σ (use full-sample σ); "big gain AND high
+volume" (volume in its top quintile — use `get_prices(..., field="volume")`
+or, in synthetic mode, simulate volume as correlated noise). For each:
+state n, and the event's frequency with its rough uncertainty.
+
+```python
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+# YOUR CODE
+```
+
+## E4 (L7) — Where could this mislead?
+
+Your E3 frequencies come from one 10-year path. Name two distinct reasons
+they may not describe the next decade.
+
+```python
+# Your answer:
+```
+
+## Hints
+
+- E2: the spread of estimates across the 500 small samples IS the sampling
+  noise — compare its width to the gap between your estimates and the
+  "true" model probability (computable exactly with scipy.stats.norm).
+- E3: boolean Series mean() = frequency; uncertainty ≈ √(p(1−p)/n).

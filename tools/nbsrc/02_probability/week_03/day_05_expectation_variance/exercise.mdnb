@@ -1,0 +1,72 @@
+# Day 5 — Exercise: Expectation & Variance
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+plt.rcParams["figure.figsize"] = (10, 4)
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+```
+
+## E1 (L3) — Discrete expectation by hand
+
+A strategy: +2% with prob 0.3, +0.5% with prob 0.4, −1.5% with prob 0.3.
+Compute E[r] and Var(r) by hand (table of x, p, x·p, (x−μ)²·p), then
+verify with a simulation (10,000 draws).
+
+```python
+# by hand (show the table in comments):
+# YOUR CODE (simulation check)
+```
+
+## E2 (L4) — Linearity, verified
+
+Two independent assets: μ₁=0.05%, σ₁=1.2%; μ₂=0.03%, σ₂=0.9%. Portfolio
+60/40. Compute E[port] by formula; verify by simulating both assets and
+the portfolio (100k draws). Also compute the portfolio SD *incorrectly*
+(0.6σ₁+0.4σ₂, ignoring independence) and correctly — the gap is the point.
+
+```python
+rng = np.random.default_rng(2)
+# YOUR CODE
+```
+
+## E3 (L5) — Expectancy decomposition on real data
+
+SPY daily returns: p, W, L decomposition (up-day rate, mean up-day, mean
+down-day magnitude). Verify pW−(1−p)L = r̄. Then compute the same for the
+*worst year* in the sample — which component moved most: p, W, or L? What
+does that tell you about how markets kill strategies?
+
+```python
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+# YOUR CODE
+```
+
+## E4 (L6/L7) — Signal-to-noise, the embryo Sharpe
+
+For SPY and for XLE (or two synthetic assets): compute μ/σ (daily), then
+annualize by ×√252. That's a Sharpe ratio. Look at the two numbers; write
+two sentences: (1) what does this ratio measure, (2) why will module 04
+care deeply about how *noisily* it is estimated?
+
+```python
+# YOUR CODE + answer:
+```
+
+## Hints
+
+- E2: independent → Var adds: Var_p = 0.6²σ₁² + 0.4²σ₂² (covariance term
+  zero by independence — day 9 removes that assumption).
+- E3: groupby year on the returns; worst year by total return; decompose.

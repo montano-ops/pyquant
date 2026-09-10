@@ -1,0 +1,69 @@
+# Day 15 — Exercise: The Central Limit Theorem
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import matplotlib.pyplot as plt
+plt.rcParams["figure.figsize"] = (10, 4)
+```
+
+## E1 (L4) — The sampling distribution, manufactured
+
+Parent: t(3) (fat-tailed). For n ∈ {5, 30, 200}: generate 20,000 sample
+means; z-standardize each set; compare tail shares P(|z|>2) against the
+normal's 4.55%. Table + one plot of the three standardized histograms vs
+the normal pdf.
+
+```python
+rng = np.random.default_rng(5)
+# YOUR CODE
+```
+
+## E2 (L3) — The two distributions, side by side
+
+For the t(3) parent: histogram of single draws vs histogram of 30-day
+means (same axes, density=True). Annotate: which is "risk management's
+distribution" and which is "statistics' distribution"?
+
+```python
+# YOUR CODE
+```
+
+## E3 (L5) — CLT on real returns
+
+SPY daily returns (2010→): bootstrap-ish sampling — draw 5,000 samples of
+n=21 daily returns (with replacement), record each sample mean's
+distribution; compare its SD with σ/√21 computed from the data. Close?
+Why might it differ systematically (dependence!)?
+
+```python
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+# YOUR CODE
+```
+
+## E4 (L7) — The inference preview
+
+Your strategy's 63-day mean return is +0.10% daily with daily σ = 1.2%.
+Compute z = mean/SE. What's the naive "p-value" one-sided? List (no
+formulas needed) the three caveats that would make reality worse.
+
+```python
+# YOUR CODE + answer:
+```
+
+## Hints
+
+- E1: standardize each set by ITS OWN mean and SD; the comparison is
+  about shape, not location.
+- E3: `idx = rng.integers(0, len(r), (5000, 21)); r.values[idx].mean(axis=1)`.

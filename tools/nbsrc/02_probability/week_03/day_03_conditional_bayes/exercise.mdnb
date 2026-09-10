@@ -1,0 +1,75 @@
+# Day 3 — Exercise: Conditional Probability & Bayes
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+plt.rcParams["figure.figsize"] = (10, 4)
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+```
+
+## E1 (L3) — Bayes by hand
+
+Base rate 3%, hit rate 85%, false alarm 12%. Compute P(event|signal) by
+hand (show the arithmetic), then verify with a function. Repeat for base
+rates 1% and 15%. One sentence: what does the sensitivity of the posterior
+to the prior tell you about rare-event trading?
+
+```python
+def bayes(prior, likelihood, false_alarm):
+    # YOUR CODE
+    ...
+```
+
+## E2 (L4) — The confusion matrix, simulated
+
+Simulate 10,000 periods: event with the E1 base rate (3%); signal fires
+given event with prob 0.85, given no-event with prob 0.12 (build it with
+two masks). Tabulate the 2×2 counts; verify each cell matches Bayes. Then
+compute the *strategy* P&L: hedge cost 0.15% per fired signal, avoided
+loss 8% when an event occurs. Is the signal tradeable?
+
+```python
+rng = np.random.default_rng(7)
+# YOUR CODE
+```
+
+## E3 (L5) — A volatility signal on real data
+
+SPY: signal = trailing 21-day vol in its top quintile (known BEFORE the
+day — shift!). Event = daily loss worse than −2% (full-sample σ basis, or
+−2% absolute — state your choice). Build the 2×2 table, compute
+P(loss|signal) vs P(loss), and the Bayes lift. Interpret in one paragraph:
+is this hedging-worthy?
+
+```python
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+# YOUR CODE
+```
+
+## E4 (L7) — The yield-curve paragraph
+
+"7 of the last 8 recessions were preceded by a yield-curve inversion."
+Write the two-table reply: what must the reader know before acting on
+this? (No data needed — reasoning.)
+
+```python
+# Your answer:
+```
+
+## Hints
+
+- E2: `fires = np.where(event, rng.random(N) < 0.85, rng.random(N) < 0.12)`.
+- E3: `vol.shift(1)` then quintile; be explicit about which σ defines a
+  "big loss" and why it also must not look ahead (rolling σ, shifted).

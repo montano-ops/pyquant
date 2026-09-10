@@ -1,0 +1,104 @@
+# Day 5 — Solution: Expectation & Variance
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+plt.rcParams["figure.figsize"] = (10, 4)
+import os
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+```
+
+## E1 — discrete expectation by hand
+
+x = (2, 0.5, −1.5)%, p = (0.3, 0.4, 0.3):
+E = 0.3(2) + 0.4(0.5) + 0.3(−1.5) = 0.6 + 0.2 − 0.45 = **+0.35%**
+E[X²] = 0.3(4) + 0.4(0.25) + 0.3(2.25) = 1.2 + 0.1 + 0.675 = 1.975
+Var = 1.975 − 0.35² = 1.8525 (%²) → σ ≈ 1.36%
+
+```python
+vals, probs = np.array([0.02, 0.005, -0.015]), np.array([0.3, 0.4, 0.3])
+mu = (vals * probs).sum()
+var = ((vals - mu) ** 2 * probs).sum()
+rng = np.random.default_rng(0)
+draws = rng.choice(vals, size=100_000, p=probs)
+print(f"E: {mu:.5f} (sim {draws.mean():.5f}) | Var: {var:.8f} (sim {draws.var():.8f})")
+```
+
+## E2 — linearity, and the price of ignoring it
+
+```python
+rng = np.random.default_rng(2)
+N = 100_000
+x = rng.normal(0.0005, 0.012, N)
+y = rng.normal(0.0003, 0.009, N)
+port = 0.6 * x + 0.4 * y
+print(f"E[port]: formula {0.6*0.0005 + 0.4*0.0003:.6f} sim {port.mean():.6f}")
+print(f"SD correct:   {np.sqrt(0.6**2*0.012**2 + 0.4**2*0.009**2):.6f} sim {port.std():.6f}")
+print(f"SD wrong (0.6σ₁+0.4σ₂): {0.6*0.012 + 0.4*0.009:.6f}")
+```
+
+The wrong SD (≈ 0.0108) exceeds the right one (≈ 0.0085) by ~27% —
+"adding risks naively" *overstates* independent-asset portfolio risk...
+and *understates* it for correlated assets with ρ large enough (0.6σ₁ +
+0.4σ₂ vs the truth including covariance). Either way: the covariance term
+is not optional bookkeeping.
+
+## E3 — expectancy decomposition on real data
+
+```python
+if DATA_SOURCE == "real":
+    px = get_prices("SPY", start="2010-01-01")
+else:
+    px = synthetic_prices(n_days=3000, n_assets=1, seed=16)
+    px.columns = ["SPY"]
+r = px["SPY"].pct_change().dropna()
+
+def decompose(s):
+    p, W, L = (s > 0).mean(), s[s > 0].mean(), -s[s < 0].mean()
+    return p, W, L, p * W - (1 - p) * L
+
+years = r.index.year
+worst_year = r.groupby(years).sum().idxmin()
+print("all sample:", tuple(round(v, 5) if isinstance(v, float) else round(v, 3)
+                            for v in decompose(r)))
+print(f"worst year {worst_year}:", tuple(round(v, 5) if isinstance(v, float) else round(v, 3)
+                            for v in decompose(r[r.index.year == worst_year])))
+print(f"check: mean {r.mean():.5f}")
+```
+
+The identity holds (pW−(1−p)L = r̄ exactly). In the worst year, the
+component that moves most is typically **L** (average down-day
+magnitude) — crashes kill strategies through the *size* of losses, not the
+count: the win rate barely moves. Defensive design targets L (exits,
+sizing, tail hedges), not p.
+
+## E4 — the embryo Sharpe
+
+```python
+if DATA_SOURCE == "real":
+    px2 = get_prices(["SPY", "XLE"], start="2010-01-01")
+else:
+    px2 = synthetic_prices(n_days=3000, n_assets=2, seed=17, drift_spread=0.0003)
+    px2.columns = ["SPY", "XLE"]
+for c in px2.columns:
+    s = px2[c].pct_change().dropna()
+    print(f"{c}: mu/sigma daily {s.mean()/s.std():.4f} -> annualized {s.mean()/s.std()*np.sqrt(252):.2f}")
+```
+
+(1) The ratio measures *edge per unit of noise* — return you expect per
+risk you carry. (2) Module 04's t-statistic for the mean is essentially
+√n × this ratio: the same quantity, expressed as evidence. A Sharpe of
+0.6 needs ~(2/0.6)² ≈ 11 years of daily data for t = 2 — module 04.7
+computes this exactly, and now you know why it's the natural question.

@@ -1,0 +1,59 @@
+# Day 20 — Solution: Module Spine, Cold
+
+## 1. The chain
+
+E[X] = Σx·p; Var(X) = E[X²]−(E[X])²; Var(aX+bY) = a²VarX + b²VarY +
+2ab·Cov; portfolio: w₁²σ₁² + w₂²σ₂² + 2w₁w₂ρσ₁σ₂; SE(mean) = σ/√n; CLT:
+sample means → N(μ, σ²/n) regardless of parent; t = (x̄−μ₀)/SE.
+
+```python
+import numpy as np
+rng = np.random.default_rng(0)
+x = rng.normal(0.001, 0.01, 10_000)
+y = 0.5 * x + rng.normal(0, 0.008, 10_000)          # correlated pair
+print(f"Var(aX+bY): sim {(0.3*x + 0.7*y).var():.8f} vs "
+      f"formula {0.3**2*x.var() + 0.7**2*y.var() + 2*0.3*0.7*np.cov(x, y)[0,1]:.8f}")
+print(f"SE(mean): sim over 2000 draws of n=100: "
+      f"{np.array([rng.choice(x, 100).mean() for _ in range(2000)]).std():.6f} "
+      f"vs σ/√100 = {x.std()/10:.6f}")
+```
+
+## 2. The two simulations
+
+```python
+# (a) SE(p̂)
+for n in [63, 252, 1260]:
+    ph = (rng.random((2000, n)) < 0.55).mean(axis=1)
+    print(f"n={n}: formula {np.sqrt(0.55*0.45/n):.4f}, sim {ph.std():.4f}")
+
+# (b) best of 500 fair strategies, 250 days
+wins = (rng.random((500, 250)) < 0.5).mean(axis=1)
+print(f"best of 500: {wins.max():.1%}")
+```
+
+(a): 0.063 / 0.031 / 0.014 — matched. (b): ≈ 58–60% — a star is
+manufactured from 500 coin flippers; expect it, discount it.
+
+## 3. The five problems
+
+```python
+from scipy import stats
+import numpy as np
+# (1)
+print(f"P(≥138|p=.5) = {1 - stats.binom.cdf(137, 252, 0.5):.4f}")
+# (2)
+se = (1 - 0.35**2)/np.sqrt(126)
+print(f"ρ̂=.35, T=126: z vs 0 = {0.35/se:.2f}; z vs .1 = {(0.35-0.1)/se:.2f}")
+# (3)
+print(f"Bayes: {0.9*0.01/(0.9*0.01 + 0.2*0.99):.3f}")
+# (4)
+n = (2*0.012/0.0003)**2
+print(f"days to t=2: {n:,.0f} = {n/252:.0f} years")
+# (5) — no code: circular-shift placebo, offset ≥ signal memory;
+#     preserves autocorrelation, destroys alignment.
+```
+
+Reference: (1) ≈ 0.064; (2) z ≈ 3.5 vs 0 (clearly nonzero), z ≈ 2.5 vs
+0.1 (also clears 2 — barely); (3) ≈ 4.3%; (4) 6,400 days ≈ 25 years;
+(5) as above. **Anything you couldn't reproduce from memory is tomorrow
+morning's review — the checkpoint will use all five.**

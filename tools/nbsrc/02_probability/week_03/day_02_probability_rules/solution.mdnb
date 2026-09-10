@@ -1,0 +1,84 @@
+# Day 2 — Solution: Probability Rules
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+plt.rcParams["figure.figsize"] = (10, 4)
+```
+
+## E1 — union bookkeeping
+
+```python
+rng = np.random.default_rng(1)
+r = rng.normal(0.0004, 0.011, 100_000)
+A, B = r > 0.01, r > -0.01
+print(f"P(A)={A.mean():.5f} P(B)={B.mean():.5f} P(A∩B)={(A & B).mean():.5f}")
+print(f"P(A∪B): direct {(A | B).mean():.5f} vs rule {A.mean() + B.mean() - (A & B).mean():.5f}")
+```
+
+The rule holds to simulation error. Note A ⊂ B here (a >1% gain is also a
+>−1% day), so P(A∪B) = P(B) — the "union" adds nothing beyond the bigger
+event. Always sketch the subset structure before computing.
+
+## E2 — conditioning on past days
+
+```python
+import os
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    px = get_prices("SPY", start="2010-01-01")
+else:
+    px = synthetic_prices(n_days=3000, n_assets=1, seed=12)
+    px.columns = ["SPY"]
+r = px["SPY"].pct_change().dropna()
+
+prev_down = (r.shift(1) < 0)
+prev2_down = (r.shift(1) < 0) & (r.shift(2) < 0)
+
+for name, cond in [("all", pd.Series(True, index=r.index)),
+                   ("after 1 down day", prev_down.fillna(False)),
+                   ("after 2 down days", prev2_down.fillna(False))]:
+    sub = r[cond.reindex(r.index).fillna(False)]
+    p, n = (sub > 0).mean(), len(sub)
+    se = np.sqrt(0.25 / n)
+    print(f"{name:18s}: P(up)={p:.3f} ± {1.96 * se:.3f} (n={n})")
+```
+
+**Expected reasoning (real SPY).** All three numbers land near 0.53–0.54
+with overlapping uncertainty: "two red days" does not measurably change the
+odds. The gambler's-reflex trade ("buy the double-red bounce") has no
+support at daily scale — day 17's fallacy, caught red-handed by an SE.
+**Common mistake:** quoting 0.56 vs 0.53 with n=90 and no SE — noise read
+as structure.
+
+## E3 — the implication trap
+
+A = {r > 2%}, B = {r > 0}: P(B|A) = 1 (a +2% day IS an up day — the
+subset always implies the superset). P(A|B) = P(A)/P(B) ≈ 0.01/0.54 ≈ 2%
+— among up days, only ~2% are big gains. Traders quote P(B|A)-shaped
+statements ("when my signal fires, the market was rising") as if they were
+P(A|B) decisions ("when my signal fires, expect a big gain"). The filter
+direction must match the trading direction.
+
+## E4 — false conclusion factory (exemplar)
+
+"My trend filter fires on 90% of the big rally days — when it fires, you
+capture the big rallies." The 90% is P(filter | rally). If the filter also
+fires on 40% of ordinary days (the base), then P(rally | filter) =
+0.9·P(rally) / (0.9·P(rally) + 0.4·(1−P(rally))) — with rare rallies
+(5%), that's 10.5%: you are long a lot of ordinary days, paying costs and
+drawdown, for a 1-in-10 shot at the rally you remember. Painful, concrete,
+and entirely arithmetic from day 3.
