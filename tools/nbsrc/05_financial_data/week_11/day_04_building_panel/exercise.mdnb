@@ -1,0 +1,84 @@
+# Day 4 — Exercise: Building a Panel
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+from qrc.universe import load_universe
+```
+
+## E1 (L4) — Build the defect panel
+
+Construct a 6-asset panel (synthetic or real top-6): A full history;
+B leading-NaNs to day 400 (IPO); C trailing after day 1600 (delist);
+D interior 5-day gap (halt); E full but one injected −35% day; F all
+NaN (failed ticker). Write the constructor; print the NaN lattice
+(heatmap or table).
+
+```python
+rng = np.random.default_rng(3)
+# YOUR CODE
+```
+
+## E2 (L4) — The cleaning duel
+
+For the panel: (a) dropna version — shape?; (b) fillna(0) version —
+E's vol, D's phantom return on gap resumption; (c) outer+NaN-preserve
+version — the listing map. One table comparing what each version
+does to each defect. Which is the research panel and why (per day 5's
+preview)?
+
+```python
+# YOUR CODE
+```
+
+## E3 (L5) — The phantom-return flag
+
+Compute returns with a boolean `phantom` flag: True where the gap
+between consecutive valid prices is > 1 trading day. Report D's
+resumption-day return with and without the flag; how many phantom
+returns does your panel have in total?
+
+```python
+# YOUR CODE
+```
+
+## E4 (L6) — panel_info, the ID card
+
+Write `panel_info(px)` → DataFrame: first, last, n, NaN%, zero-runs
+max, |r|>25% count, per ticker. Run on your defect panel: which rows
+flag which defects? (E flagged by the |r|>25% column; F by n=0...)
+
+```python
+# YOUR CODE
+```
+
+## E5 (L7) — Where could this mislead?
+
+Your colleague: "I'll just drop the days where anything is missing —
+cleaner data, same science." The one-paragraph reply with the B/C
+case quantified (how much of the panel dies).
+
+```python
+# Your answer:
+```
+
+## Hints
+
+- E1: synthetic_prices(n_assets=6) then overwrite columns with the
+  defect patterns; keep the constructor reusable for day 7.
+- E3: `gap = index.to_series().diff()` on each column's valid entries;
+  flag where gap > 1 business day.

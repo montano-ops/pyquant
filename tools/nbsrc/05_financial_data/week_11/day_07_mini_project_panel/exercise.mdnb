@@ -1,0 +1,103 @@
+# Day 7 — Mini-Project: Research Panel v1
+
+The deliverable is two functions and a report: `build_universe()`,
+`quality_report()`, and the bias paragraph. The synthetic
+constructor plants known defects; the report must find them BLIND —
+the grader is your code comparing found vs planted. In real mode the
+constructor is a one-pass `get_prices` pull over
+`load_universe("research50")` (documented, not required here).
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.synth import synthetic_prices
+```
+
+## Part 1 (L4) — the universe constructor
+
+`build_universe(seed)` → raw close, adjusted close, dollar volume,
+actions, planted (the ground truth). Requirements: 50 tickers,
+~10 years daily, cross-sectionally correlated (corr≈0.4) with a
+drift spread; dollar volumes spanning ~$5M–$2B. Plant, on DISJOINT
+tickers: 5 late listers, 3 early delisters, 2 halt gaps (5 days),
+1 stale series (price frozen + zero volume for 120 days), 1 crash
+day (−35%), and on two clean tickers: one 2:1 split and four $0.80
+dividends (raw/adjusted must follow the day-2 conventions exactly —
+the cross-checks will test the identities).
+
+```python
+def build_universe(seed=42):
+    # YOUR CODE
+    ...
+
+raw, adj, dvol, actions, planted = build_universe(42)
+```
+
+## Part 2 (L4) — the panel
+
+Listing map (first/last/n/NaN% per ticker), returns from adjusted
+close, phantom-return flags on resumption days. Mean cross-section
+size over time — one number that already tells the survivorship
+story.
+
+```python
+# YOUR CODE
+```
+
+## Part 3 (L5) — the quality report
+
+`quality_report(raw, adj, dvol, actions)` prints:
+(a) the panel_info ID card (first, last, n, NaN%, min price, median
+DV, zero-vol run max, |r|>25% count, n dividends, n splits);
+(b) the exception list — every flagged ticker with a DISPOSITION;
+(c) the NaN-lattice heatmap;
+(d) the three cross-checks: split date vs raw −50% jump and clean
+adj; ex-dates vs adj−raw gap ≈ D/P (the day-2 identity, exact);
+zero-volume days vs frozen price.
+
+```python
+# YOUR CODE
+```
+
+## Part 4 (L5) — the grader
+
+Compare the report's findings against `planted`: every planted
+defect found? Any extras (natural big moves) — dispositioned? A
+report that misses a planted defect is not yet a report.
+
+```python
+# YOUR CODE
+```
+
+## Part 5 (L6) — the bias paragraph
+
+Specific to THIS panel, with numbers: what it cannot see, the
+bounds on its survivorship content, which conclusions survive.
+Boilerplate is worth zero.
+
+```python
+# YOUR ANSWER:
+```
+
+## Hints
+
+- Part 1: assign defect tickers from a permutation (disjoint by
+  construction); NaN regions are applied AFTER events so nothing
+  collides; split before copying adjusted, or you will halve the
+  wrong side (a +100% phantom in adj — test it).
+- Part 3: classify by NaN-pattern geometry: leading block = late
+  lister, trailing block = delister, interior run = halt; stale =
+  long zero-volume run; cross-checks use the day-1/2 identities.

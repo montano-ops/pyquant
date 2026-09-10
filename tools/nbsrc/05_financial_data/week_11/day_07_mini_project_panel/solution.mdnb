@@ -1,0 +1,271 @@
+# Day 7 — Solution: Research Panel v1
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.synth import synthetic_prices
+```
+
+## Part 1 — the universe constructor
+
+```python
+def build_universe(seed=42, n=50, n_days=2600):
+    rng = np.random.default_rng(seed)
+    raw = synthetic_prices(n_days=n_days, n_assets=n, seed=seed, corr=0.4,
+                           drift_spread=0.0004, end="2024-12-31")
+    cols = [f"T{i:02d}" for i in range(n)]
+    raw.columns = cols
+    dvol = pd.DataFrame({c: np.exp(rng.uniform(np.log(5e6), np.log(2e9)))
+                         * np.exp(rng.normal(0, 0.6, n_days)) for c in cols},
+                        index=raw.index)                     # dollar volume
+    planted = {}
+    order = list(map(str, rng.permutation(cols)))            # disjoint by construction
+    planted.update({"late": order[0:5], "early": order[5:8], "halt": order[8:10],
+                    "stale": order[10:11], "crash": order[11:12]})
+    planted["pos"] = {}
+    for c in planted["late"]:
+        k = int(rng.integers(300, 1400))
+        raw.iloc[:k, raw.columns.get_loc(c)] = np.nan
+        planted["pos"][c] = ("late", k)
+    for c in planted["early"]:
+        k = int(rng.integers(1500, 2300))
+        raw.iloc[k:, raw.columns.get_loc(c)] = np.nan
+        planted["pos"][c] = ("early", k)
+    for c in planted["halt"]:
+        k = int(rng.integers(600, 2000))
+        raw.iloc[k:k+5, raw.columns.get_loc(c)] = np.nan
+        planted["pos"][c] = ("halt", k)
+    for c in planted["stale"]:
+        k = n_days - 120
+        loc = raw.columns.get_loc(c)
+        raw.iloc[k:, loc] = raw.iloc[k-1, loc]               # frozen price
+        dvol.iloc[k:, loc] = 0.0                             # zero volume
+        planted["pos"][c] = ("stale", k)
+    for c in planted["crash"]:
+        k = int(rng.integers(800, 1800))
+        raw.iloc[k, raw.columns.get_loc(c)] *= 0.65
+        planted["pos"][c] = ("crash", k)
+    # corporate actions on two clean tickers (day-2 conventions)
+    actions = {}
+    c_split = order[12]
+    s = int(rng.integers(1000, 2000))
+    loc = raw.columns.get_loc(c_split)
+    raw.iloc[s:, loc] /= 2.0                                 # as-traded halves
+    adj = raw.copy()                                         # copy AFTER halving
+    adj.iloc[:s, loc] /= 2.0                                 # adj: unit-consistent
+    actions[c_split] = pd.DataFrame({"Splits": [2.0]}, index=[raw.index[s]])
+    planted["pos"][c_split] = ("split", s)
+    c_div = order[13]
+    ex_dates = [raw.index[int(k)] for k in sorted(rng.integers(400, 2400, size=4))]
+    for e in ex_dates:
+        adj.loc[adj.index < e, c_div] *= (1 - 0.80/raw.loc[e, c_div])
+    actions[c_div] = pd.DataFrame({"Dividends": [0.80]*4}, index=ex_dates)
+    planted["pos"][c_div] = ("div", ex_dates)
+    dvol = dvol.where(raw.notna())
+    return raw, adj, dvol, actions, planted
+
+raw, adj, dvol, actions, planted = build_universe(42)
+print(f"panel: {raw.shape[0]} days x {raw.shape[1]} tickers; "
+      f"planted: 5 late, 3 early, 2 halt, 1 stale, 1 crash, 1 split, 1 div")
+```
+
+**Design notes.** Defect tickers come from one permutation — disjoint
+by construction (a halt planted inside a delisted stretch is
+invisible, not a defect). The split halves raw FIRST; adjusted is a
+copy with the pre-split past halved too — so adjusted is
+unit-consistent and its split-day return is noise, while raw shows
+−50%. Real mode: the same contract from
+`load_universe("research50")` + one-pass `get_prices` +
+`get_actions`; the report code below is unchanged.
+
+## Part 2 — the panel
+
+```python
+rets = adj.pct_change()
+listing = pd.DataFrame({
+    "first": raw.apply(lambda s: s.first_valid_index()),
+    "last": raw.apply(lambda s: s.last_valid_index()),
+    "n": raw.notna().sum(),
+    "nan_pct": raw.isna().mean().round(3)})
+print(listing.head(3))
+print(f"\nmean cross-section: {raw.notna().sum(axis=1).mean():.1f} of 50")
+
+def resumption_flags(s):
+    v = s.dropna()
+    gap = v.index.to_series().diff()
+    return (gap > pd.Timedelta(days=4)).sum()
+
+n_phantom = sum(resumption_flags(raw[c]) for c in raw.columns)
+print(f"phantom-return (resumption) events: {n_phantom} (the 2 halts)")
+```
+
+**Expected:** mean cross-section ≈ 47 of 50 — the survivorship story
+in one number: the panel's cross-section is never the full 50, and
+the missing names are not missing at random.
+
+## Part 3 — the quality report
+
+```python
+def zero_runs(mask):
+    runs, run = [], 0
+    for v in mask:
+        if v: run += 1
+        elif run: runs.append(run); run = 0
+    if run: runs.append(run)
+    return runs
+
+def panel_info(raw, dvol, actions):
+    rows = []
+    for c in raw.columns:
+        s = raw[c].dropna()
+        a = actions.get(c, pd.DataFrame())
+        n_div = int(a.get("Dividends", pd.Series(dtype=float)).notna().sum())
+        n_split = int(a.get("Splits", pd.Series(dtype=float)).notna().sum())
+        zr = zero_runs(dvol[c] == 0)
+        rows.append(dict(ticker=c,
+                         first=s.index[0].date(), last=s.index[-1].date(),
+                         n=len(s), nan_pct=round(raw[c].isna().mean(), 3),
+                         min_price=round(float(s.min()), 2),
+                         median_dv_M=round(float((s*dvol[c].reindex(s.index)).median()/1e6), 1),
+                         zero_vol_run=max(zr) if zr else 0,
+                         big_moves=int((raw[c].pct_change().abs() > 0.25).sum()),
+                         n_div=n_div, n_split=n_split))
+    return pd.DataFrame(rows).set_index("ticker")
+
+def classify(raw, dvol, halt_min=3, stale_min=30, edge=20):
+    out = {}
+    for c in raw.columns:
+        s, vp = raw[c], raw[c].notna()
+        valid = np.where(vp)[0]
+        tags = []
+        if len(valid) == 0: out[c] = ["EMPTY"]; continue
+        first, last = valid[0], valid[-1]
+        if first > edge: tags.append("LATE_LISTER")
+        if last < len(s) - edge: tags.append("EARLY_DELISTER")
+        interior = zero_runs(~vp.iloc[first:last+1])
+        if any(x >= halt_min for x in interior): tags.append("HALT_GAP")
+        zr = zero_runs(dvol[c] == 0)
+        if zr and max(zr) >= stale_min: tags.append("STALE")
+        if (s.pct_change().abs() > 0.25).any(): tags.append("BIG_MOVE")
+        out[c] = tags or ["OK"]
+    return out
+
+info = panel_info(raw, dvol, actions)
+print(info.sort_values("nan_pct", ascending=False).head(12))
+```
+
+```python
+cls = classify(raw, dvol)
+DISPOSITION = {
+    "LATE_LISTER":   "enter at first_valid — nonexistent, not missing",
+    "EARLY_DELISTER":"exit at last_valid — delisting return needed (week 12)",
+    "HALT_GAP":      "flag resumption-day return (phantom: 5d news in 1d)",
+    "STALE":         "vendor freeze — truncate at last non-stale date",
+    "BIG_MOVE":      "verify vs actions/news before trusting",
+}
+exc = {c: t for c, t in cls.items() if t != ["OK"]}
+print(f"exceptions: {len(exc)} of {len(cls)} tickers")
+for c, tags in exc.items():
+    print(f"  {c}: {', '.join(tags)} -> {DISPOSITION[tags[0]]}")
+
+fig, ax = plt.subplots(figsize=(10, 8))
+ax.imshow(raw.isna().T.values, aspect="auto", cmap="Greys",
+          interpolation="nearest")
+ax.set_title("NaN lattice (black = missing)")
+ax.set_xlabel("day"); ax.set_ylabel("ticker")
+plt.tight_layout(); plt.show()
+```
+
+```python
+# cross-check (a): split — raw jumps ~1/ratio, adjusted is clean
+c_split, c_div = list(actions)[:2]
+sd = actions[c_split].index[0]
+print(f"(a) split day: raw {raw[c_split].pct_change().loc[sd]:+.1%}, "
+      f"adj {adj[c_split].pct_change().loc[sd]:+.2%}")
+
+# cross-check (b): dividends — the day-2 identity, exact
+worst = 0.0
+for e in actions[c_div].index:
+    r_raw = raw[c_div].pct_change().loc[e]
+    r_adj = adj[c_div].pct_change().loc[e]
+    rhs = (1 + r_raw)/(1 - 0.80/raw.loc[e, c_div]) - 1
+    worst = max(worst, abs(r_adj - rhs))
+    print(f"(b) ex {e.date()}: adj-raw gap {r_adj - r_raw:+.3%} "
+          f"vs D/P {0.80/raw.loc[e, c_div]:+.3%}")
+print(f"    identity max error: {worst:.1e}")
+
+# cross-check (c): zero volume vs frozen price
+c_stale = planted["stale"][0]
+print(f"(c) {c_stale}: {int((dvol[c_stale]==0).sum())} zero-volume days, "
+      f"{int((raw[c_stale].pct_change()==0).sum())} zero-return days -> stale")
+```
+
+**Expected:** (a) raw −50.0%, adj ≈ 0 (noise); (b) each gap ≈ D/P
+(0.5–0.8%) with the identity exact to machine precision; (c) 120
+and 120 — price frozen exactly when volume is zero is a vendor
+freeze, not a market. **A check that finds nothing is still a
+check** — print "0 exceptions" with the threshold stated; the
+report's value is reproducibility, not drama.
+
+## Part 4 — the grader
+
+```python
+want_map = {"late": "LATE_LISTER", "early": "EARLY_DELISTER",
+            "halt": "HALT_GAP", "stale": "STALE", "crash": "BIG_MOVE"}
+all_hit = True
+for name, tag in want_map.items():
+    want, got = planted[name], [c for c, t in cls.items() if tag in t]
+    hit = set(want) <= set(got)
+    all_hit &= hit
+    print(f"{name:6s}: planted {sorted(want)} -> found {sorted(got)} "
+          f"{'HIT' if hit else '*** MISS ***'}")
+extra = sorted(set(c for c, t in cls.items() if "BIG_MOVE" in t)
+               - set(planted["crash"]))
+print(f"natural big moves beyond planted (need disposition): {extra}")
+print("VERDICT:", "report finds every planted defect" if all_hit else "fix the report")
+```
+
+**Expected:** 5/5 HIT — every planted defect found blind; the
+natural big moves (fat-tail days, one of them the split ticker —
+explained by actions, disposition: use adj_close) are exactly what
+the disposition step is FOR: flagged, explained, retained or
+excluded, never silent.
+
+## Part 5 — the bias paragraph (exemplar)
+
+```python
+n_late, n_early = len(planted["late"]), len(planted["early"])
+print(f"late listers {n_late}/50 ({n_late/50:.0%}), early delisters "
+      f"{n_early}/50 ({n_early/50:.0%}); mean cross-section "
+      f"{raw.notna().sum(axis=1).mean():.1f}")
+print(f"min price ${info['min_price'].min():.0f}; min median DV "
+      f"${info['median_dv_M'].min():.0f}M — screens pass everywhere")
+```
+
+**The paragraph.** "This panel is 50 large, liquid, alive-today
+names — survivorship-biased by construction (day 5). It cannot see:
+the dead (their terminal −30%s), the small (ADV floor ~$5M), the
+illiquid tail, or anything pre-2015. Within its window, 10% of
+names list late and 6% delist early; the cross-section averages
+47/50, and the 3 delisters' post-exit returns are absent — bounded
+by the graveyard params at ~0.5–2%/yr of universe-level content.
+Conclusions that survive: cross-sectional studies of liquid large
+caps (momentum at the large-cap end), factor construction, and
+anything conditional on liquidity. Conclusions that cannot:
+population claims about stock returns, small-cap effects, distress
+pricing, or any strategy whose edge lives where death concentrates.
+The stale series is truncated at its freeze (120 days), the halts
+carry phantom-flags, and every disposition is in the exception list
+above." Specific numbers, specific exclusions — a stranger can
+rerun the notebook and get the same paragraph.

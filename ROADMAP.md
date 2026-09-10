@@ -3,8 +3,9 @@
 This is the canonical map of the course: every module, every week, every day,
 every paper, and how they connect. Modules 00–03 are fully authored (day
 folders contain lesson / exercise / solution / review, all solution
-notebooks execute end-to-end). Module 04 is partially authored (week 8);
-modules 04–15 are otherwise fully **specified** at the day level below and
+notebooks execute end-to-end). Modules 04–05 are partially authored
+(module 04 week 8; module 05 week 11); modules 04–15 are otherwise fully
+**specified** at the day level below and
 in each module's README — day folders are authored to the same standard
 progressively (see [AUTHORING.md](AUTHORING.md) for the exact template;
 the status table marks each module's state).
@@ -61,7 +62,7 @@ speed: the retrieval practice, spacing, and re-derivations ARE the course.
 | 02 | [Probability](02_probability/) | 3–5 | ✅ |
 | 03 | [Statistics](03_statistics/) | 6–7 | ✅ |
 | 04 | [Statistical inference](04_inference/) | 8–10 | 🟨 (week 8 authored; 9–10 specced) |
-| 05 | [Financial data](05_financial_data/) | 11–12 | 🔲 |
+| 05 | [Financial data](05_financial_data/) | 11–12 | 🟨 (week 11 authored; 12 specced) |
 | 06 | [Regression](06_regression/) | 13–15 | 🔲 |
 | 07 | [Asset pricing & factors](07_asset_pricing/) | 16–19 | 🔲 |
 | 08 | [Time-series analysis](08_time_series/) | 20–22 | 🔲 |
@@ -205,10 +206,11 @@ README.*
 | 04.20 | Review week cont. 🔲 | Mixed problem set across all inference tools | — |
 | 04.21 | Module checkpoint: does the effect survive? 🔲 | Full test + mini-report on a signal of your choosing | — |
 
-## Module 05 — Financial data (Weeks 11–12) 🔲
+## Module 05 — Financial data (Weeks 11–12) 🟨
 
 *Goal: build a clean, honest research panel and know exactly which biases it
-cannot escape. Week 11 is authored; week 12 is specced.*
+cannot escape. Week 11 is authored; week 12 is specced below and in the
+module README.*
 
 | Day | Title | What you do | Paper hook |
 |---|---|---|---|

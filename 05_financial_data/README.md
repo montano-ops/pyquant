@@ -1,15 +1,16 @@
 # Module 5 — Financial data (Weeks 11–12)
 
-build a clean, honest research panel and know exactly which biases it cannot escape. Week 11 is authored; week 12 is specced..
+build a clean, honest research panel and know exactly which biases it cannot escape.
 
-> **Status: specced, not yet authored.** The complete day-by-day blueprint
-> (title, what you do, paper hook for every day) lives in the
-> [ROADMAP](../ROADMAP.md) — this directory will be filled to the same
-> standard as modules 00–03 (lesson / exercise / solution / review per day;
-> see [AUTHORING.md](../AUTHORING.md)). Do not wait: the roadmap rows plus
-> the papers are enough for a strong learner to self-study, and the
-> authored modules deliberately hand you the machinery (distributions,
-> SEs, sampling, robustness, simulation) that makes that possible.
+> **Status: partially authored — week 11 (days 1–7) complete** (lesson /
+> exercise / solution / review per day; all solution notebooks execute
+> end-to-end). Week 12 (days 8–14) is specced in the
+> [ROADMAP](../ROADMAP.md) and will be filled to the same standard.
+
+| Week | Days | Theme |
+|---|---|---|
+| 11 | 1–7 | Raw vs adjusted prices → corporate actions by hand (unit-tested on a constructed world) → OHLC, volume, liquidity & the screens → building the panel (NaN lattice, phantom returns) → survivorship bias I → review; **mini-project: research panel v1 + data-quality report** |
+| 12 | 8–14 | Delisting returns → survivorship bias II → point-in-time data → timestamps & availability → reproducible pipelines → review; **checkpoint: bias audit report** (specced) |
 
 **Scale:** 14 days · weeks 11–12 · papers: Brown, Goetzmann, Ibbotson & Ross (1992) — read; Paper hook; Shumway (1997) — read
 

@@ -1,0 +1,153 @@
+# Day 6 — Solution: Review (Days 1–5)
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.synth import synthetic_prices
+```
+
+## P1 — the dividend day
+
+```python
+# the cold answers: raw return = (96-100)/100 = -4% (the ex-drop);
+# holder = 0% (price -4%, cash +$4); past prices × (1 - D/P_ex) = 0.96.
+n = 300
+rng = np.random.default_rng(6)
+P = 100 * np.cumprod(1 + rng.normal(0.0003, 0.01, n))
+D = 2.0
+ex = 150
+raw_ex = P[ex] * 0.98          # ex-day opens ~2% lower (the drop)
+holder = (raw_ex / P[ex-1]) / (1 - D/raw_ex) - 1
+print(f"ex-day: raw {(raw_ex/P[ex-1])-1:+.2%}, holder {holder:+.2%}")
+print(f"adj-raw gap on ex-date ≈ D/P = {D/raw_ex:.2%}")
+```
+
+**Reference answer.** Raw −4%, holder 0%, factor 0.96 on all past
+prices. The identity: adjusted price manufactures the holder's
+return; the one-day gap between adjusted and raw returns is ≈ D/P —
+the dividend's size in return units. Any screen that mixes the two
+conventions sees phantom −4% events it can explain only as crashes.
+
+## P2 — the ID card
+
+```python
+idx = pd.bdate_range("2010-01-04", periods=3000)
+base = synthetic_prices(n_days=len(idx), n_assets=6, seed=6, corr=0.3)
+base.index = idx
+panel = base.copy()
+panel.iloc[:1200, 0:3] = np.nan                       # late listers (2013~)
+panel.iloc[2400:, 3:5] = np.nan                       # early delisters (~2020)
+halt = (panel.index >= "2019-03-04") & (panel.index <= "2019-03-08")
+panel.loc[halt, panel.columns[5]] = np.nan            # halt week
+
+def panel_info(px):
+    rows = []
+    for c in px.columns:
+        s = px[c].dropna()
+        rows.append(dict(ticker=c,
+                         first=s.index[0].date() if len(s) else None,
+                         last=s.index[-1].date() if len(s) else None,
+                         n=len(s), nan_pct=round(px[c].isna().mean(), 3)))
+    return pd.DataFrame(rows).set_index("ticker")
+
+info = panel_info(panel)
+print(info)
+```
+
+**Reference answer (the disposition column, spoken):** late listers
+— "first=2013, leading NaNs: IPO, not missing; enter the sample at
+first." Early delisters — "last=2020, trailing NaNs: acquired/died;
+delisting return needed (week 12) before the name leaves." Halter —
+"interior gap of 5, all in one week: halt; flag the resumption-day
+return as phantom (multi-day news in a 1-day return)." The ID card
+distinguishes nonexistent (leading/trailing) from suspended
+(interior) — different objects, different dispositions.
+
+## P3 — the DJIA autopsy
+
+```python
+# optional toy: membership earned by performance
+rng = np.random.default_rng(7)
+n, T = 30, 360
+mu = rng.normal(0.08, 0.04, n)
+r = rng.normal(0, 0.06, (T, n)) + mu[None, :]/12
+# kill the worst performer each year, replace with a fresh high-drift name
+for y in range(1, T//12):
+    worst = r[:y*12].mean(0).argmin()
+    mu[worst] = rng.normal(0.12, 0.02)          # replacement is a winner
+    r[y*12:, worst] = rng.normal(0, 0.06, T-y*12) + mu[worst]/12
+print(f"construction premium ≈ {r.mean()*12 - 0.08:.2%}/yr vs the 8% population")
+```
+
+**Reference answer.** Channels: (1) dead members absent — their
+2008 losses deleted (inflates, mostly in bear regimes: timing
+concentration); (2) post-2009 entrants present from their good
+years — membership earned by rally, so the backtest samples each
+entrant's BEST stretch (inflates); (3) rebalancing INTO survivors'
+recoveries unopposed by the deleted dead (inflates, interacts with
+(1)). Toy sim shows the mechanism premium ~0.5–1.5%/yr — the 2.1%
+is plausibly 0.6–1.2%/yr pure construction. The fix is point-in-time
+membership, which for indices means historical constituent files.
+
+## P4 — the honest report
+
+```python
+# the arithmetic the paragraph must contain
+adv_bucket, sig_bucket, cost_bucket = 0.55e6, 0.004, 0.035   # $300-800k names
+capacity = 0.04 * adv_bucket
+print(f"bucket capacity at 4% participation: ${capacity/1e3:.0f}k per name")
+print(f"signal {sig_bucket:.1%}/mo vs round-trip cost ~{cost_bucket:.0%} "
+      f"-> net {(sig_bucket-cost_bucket):+.1%}/mo")
+```
+
+**Reference answer (three lines):** screened result X% (all
+tradable names); unscreened Y% (all names, fiction at the margin);
+and the third thing — the signal is concentrated in the $300–800k
+bucket where capacity ≈ $30k/name and round-trip costs ~3.5% eat
+the 0.4%/mo edge: "the effect is real, and mostly untradable at
+meaningful size — we report it as a characteristic of returns, not
+an implementable strategy." That sentence is a finding, not a
+failure; hiding the bucket structure behind the screen is how
+"significant" gets printed on untradable alpha.
+
+## P5 — why get_prices raises
+
+**Reference answer.** Silent skip = survivorship by try/except: a
+ticker missing from today's pull is disproportionately dead, and
+dead correlates with losing — the pipeline would delete losers
+mechanically and call it a data hiccup. Raising forces a universe
+DECISION (documented, bounded, reviewable) instead of an accident.
+The cost: brittleness — one bad ticker kills the pull — and that is
+the right trade, because the failure is loud at build time while
+the bias is silent at publication time. (qrc's delisted_demo
+universe exists so the decision has somewhere to go.)
+
+## Build check
+
+```python
+panel8 = synthetic_prices(n_days=1500, n_assets=8, seed=8, corr=0.3)
+panel8.iloc[:400, 5] = np.nan                 # one late lister
+panel8.iloc[1200:, 6] = np.nan                # one early delister
+info8 = panel_info(panel8)
+print(info8)
+rets8 = panel8.pct_change()
+phantom = (panel8.notna() & panel8.shift(1).isna() & panel8.shift().notna().shift())
+print(f"resumption events per ticker:\n{(panel8.notna() & panel8.shift(1).isna()).sum()}")
+```
+
+**Reference answer.** The 20-minute drill: outer join (synthetic
+already aligned — in real mode, `join="outer"`), listing map
+(first/last/n/NaN%), pct_change with a resumption-day flag where a
+gap precedes the next valid price, and the ID card. If any step
+needed the lesson, log it — day 7 runs this at 50× with a quality
+report that must find planted defects on its own.

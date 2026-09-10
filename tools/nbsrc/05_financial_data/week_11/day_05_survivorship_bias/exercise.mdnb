@@ -1,0 +1,87 @@
+# Day 5 — Exercise: Survivorship Bias
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.universe import load_universe, DELISTED_DEMO
+```
+
+## E1 (L4) — The graveyard, built (with the selection equation)
+
+Build a 400-stock synthetic world, 15 years monthly: each stock has
+a persistent drift μᵢ ~ N(10%, 5%) (this makes momentum REAL);
+monthly hazard of death ~0.5%/mo at the mean but HIGHER for
+low-drift stocks (deaths correlate with performance — that's the
+selection equation); a dying stock's final month returns −30%
+(Shumway's delisting return), then it is gone. Store death months.
+Print: survivors vs dead at year 15, and corr(μᵢ, months alive).
+
+```python
+rng = np.random.default_rng(5)
+# YOUR CODE
+```
+
+## E2 (L5) — Two long-only backtests, one truth
+
+Equal-weight monthly rebalanced: (a) survivor universe (alive at
+the end), (b) point-in-time (alive at t, holding each stock THROUGH
+its −30% delisting month). Report annualized mean/vol of each. The
+gap is survivorship bias in return space — compare it to the
+lesson's 0.5–2%/yr small-cap range.
+
+```python
+# YOUR CODE
+```
+
+## E3 (L5) — Momentum: measure the two channels separately
+
+Rank on trailing 6m; long top decile, short bottom decile, both
+universes. Don't just compare L−S Sharpes — decompose: long-leg
+mean bias and short-leg mean bias (survivor − PIT), then the net
+spread. Which leg does the bias hit harder, and why?
+
+```python
+# YOUR CODE
+```
+
+## E4 (L6) — BGI&R decode
+
+From the lesson's paper: (a) why do survivor databases overstate
+mean returns AND persistence of winners? (b) One-sentence version
+of "survivorship is a selection equation, not a data error."
+
+```python
+# Your answer:
+```
+
+## E5 (L7) — Where could this mislead?
+
+Your universe file is "S&P 500 constituents, current." Your strategy
+is mean-reversion on losers. Direction and rough magnitude of the
+bias, and the fix (data to buy/collect, and the point-in-time rule).
+
+```python
+# Your answer:
+```
+
+## Hints
+
+- E1: `death_age_months = rng.exponential(1/lam_i)` with
+  `lam_i = 0.004·exp(−10·(μᵢ−0.10))`; delist month return
+  −0.30 + N(0, 0.05); alive through dm, NaN after.
+- E3: eligibility at t uses `alive[t]`; the delist-month return must
+  be INSIDE the PIT portfolio. Legs: compare means, not just
+  Sharpes — the vol story and the mean story differ here.

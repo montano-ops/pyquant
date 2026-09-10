@@ -1,0 +1,96 @@
+# Day 6 — Exercise: Review (Days 1–5)
+
+Cold retrieval first — commit to written answers for all 10 items in
+lesson.md BEFORE opening anything. Then these problems, in order.
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.synth import synthetic_prices
+```
+
+## P1 — the dividend day, cold
+
+Stock at $100 pays a $4 dividend (ex tomorrow), nothing else changes
+(price opens/holds flat through the drop). Compute: raw return
+tomorrow; holder's return tomorrow; the factor applied to all PAST
+prices. Then check the general identity: adj−raw gap on an ex-date ≈
+D/P — show it in code on a constructed path.
+
+```python
+# YOUR CODE
+```
+
+## P2 — the ID card for defect patterns
+
+Construct a 6-column panel (synthetic): 3 late listers (leading NaNs
+to 2013), 2 early delisters (trailing NaNs after 2020), 1 halt week.
+Write panel_info rows for each pattern — the six columns of the ID
+card, and the one-line disposition note per pattern.
+
+```python
+# YOUR CODE
+```
+
+## P3 — the DJIA autopsy
+
+"Universe = current DJIA members, 1990–2020, equal weight, monthly
+rebalance, +2.1%/yr excess." List the three survivorship channels
+inflating the 2.1%, each with its direction. Bonus (10 min): simulate
+a toy version — 30 members, deaths correlated with returns,
+replacements selected on recent performance — and measure the
+construction premium.
+
+```python
+# YOUR ANSWER (+ optional sim)
+```
+
+## P4 — the screen that deletes your alpha
+
+ADV screen at $1M; your signal lives in $300k–$800k names. What is
+the honest report? Write the three-line results paragraph you would
+submit (screened, unscreened, and the third thing).
+
+```python
+# YOUR ANSWER
+```
+
+## P5 — why get_prices raises
+
+Why does the qrc data layer raise on a failed ticker instead of
+returning the ones it could fetch? Name the bias this design decision
+prevents, and the failure mode it creates instead (and why that is
+the right trade).
+
+```python
+# YOUR ANSWER
+```
+
+## Build (20 min, no peeking)
+
+From a blank cell: the 8-ticker panel (outer join), the listing map
+(first/last/n/NaN%), returns with the phantom-return check, the
+panel_info table. Day 7 scales this to 50 — the drill is the engine.
+
+```python
+# YOUR BUILD
+```
+
+## Hints
+
+- P1: holder = (P_t/P_{t−1})/(1 − D/P_t) − 1 with P flat at 96
+  after the ex-drop... careful with which price the factor uses.
+- P3: replacements selected on recent performance = the alive-at-end
+  condition running FORWARD too (index membership is earned).

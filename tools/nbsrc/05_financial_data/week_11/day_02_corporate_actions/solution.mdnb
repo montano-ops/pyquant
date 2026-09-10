@@ -1,0 +1,122 @@
+# Day 2 — Solution: Corporate Actions by Hand
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_actions, get_prices
+```
+
+## E1 — the algorithm, built and unit-tested
+
+```python
+rng = np.random.default_rng(1)
+n = 300
+P = 50 * np.cumprod(1 + rng.normal(0.0002, 0.015, n))    # unit-consistent truth
+
+splits = {100: 2.0, 220: 3.0}
+divs = {t: 0.5 for t in range(21, n, 21)}
+
+def make_raw(P, splits):
+    raw = P.copy()
+    for t, ratio in sorted(splits.items()):
+        raw[t:] = raw[t:] / ratio               # post-event prices in new units
+    return raw
+
+raw = make_raw(P, splits)
+
+# holder's true return, provider (multiplicative) convention:
+# price move from P (split-aware); dividend measured per CURRENT share
+# against the AS-TRADED ex price raw[t].
+r_true = pd.Series(index=range(1, n), dtype=float)
+for t in range(1, n):
+    rr = P[t]/P[t-1] - 1
+    if t in divs:
+        rr = (P[t]/P[t-1]) / (1 - divs[t]/raw[t]) - 1
+    r_true.iloc[t-1] = rr
+
+def adjust(raw, splits, divs):
+    raw = pd.Series(raw)
+    factor = pd.Series(1.0, index=raw.index)
+    for t in sorted(set(list(splits) + list(divs)), reverse=True):  # newest first
+        if t in splits:
+            factor.iloc[:t] /= splits[t]
+        if t in divs:
+            factor.iloc[:t] *= (1 - divs[t]/raw.iloc[t])            # ex-day raw price
+    return raw * factor, factor
+
+adj, factor = adjust(raw, splits, divs)
+print(f"unit test |adj-ret − true-ret| max: {(adj.pct_change().dropna() - r_true).abs().max():.2e}")
+```
+
+**Expected:** ~1e−16. The adjusted series manufactures the holder's
+return stream exactly — on a world you control, so the test is
+meaningful. Two places this world bites, both caught by the unit
+test: (1) TIMING — which prices count as "before the event"; the
+most common real-world bug is a one-day error per event, invisible
+per event, compounding across hundreds. (2) UNITS — the dividend
+factor must be measured against the AS-TRADED ex price (dividends
+are per current share). Measure D against the unit-consistent P
+here and the test fails at ~1e−2: after the 2:1 split at day 100,
+P is twice raw, so D/P understates the yield by half. Provider
+implementations differ in exactly this corner — which is E4.
+
+## E2 — the reverse split
+
+```python
+splits2 = {100: 2.0, 220: 3.0, 260: 1/5}        # 1:5 reverse = ratio 0.2
+raw2 = make_raw(P, splits2)
+adj2, _ = adjust(raw2, splits2, divs)
+print(f"raw return on reverse-split day: {raw2[260]/raw2[259]-1:+.1%}")
+print(f"adj return on that day: {adj2.iloc[260]/adj2.iloc[259]-1:+.4%}  <- holder's truth")
+```
+
+**Expected:** raw shows a phantom ≈ +400% day (price restated ×5 in
+new units); adjusted shows ordinary noise. The algorithm needed NO
+special case — ratio 0.2 flows through the same line as ratio 3.0.
+**A reverse split is a split with ratio < 1; any if-branch for it in
+your code means your data model confuses ratios with counts.**
+
+## E3 — the audit pair
+
+```python
+r_raw = pd.Series(raw2).pct_change()
+r_adj = adj2.pct_change()
+# exact identities: the event's return is the one ENDING on the event
+# date — pct_change index t, not t-1.
+split_ok = [abs((1 + r_raw.iloc[t])*splits2[t] - (1 + r_adj.iloc[t])) < 1e-9
+            for t in splits2]
+div_ok = [abs((1 + r_adj.iloc[t])*(1 - divs[t]/raw2[t]) - (1 + r_raw.iloc[t])) < 1e-9
+          for t in divs]
+print(f"split integrity: {all(split_ok)} ({len(split_ok)} events)")
+print(f"dividend integrity: {all(div_ok)} ({len(div_ok)} events)")
+```
+
+Both all-True. Two traps fixed on the way: the naive check
+(r_raw ≈ 1/ratio − 1) can NEVER pass at 1e−9 with 1.5% daily noise —
+the exact identity (1+r_raw)·ratio = 1+r_adj carries the noise
+through instead of fighting it; and the event's return is the one
+ENDING on the event date (index t, not t−1) — the one-day error the
+lesson warned about, caught here by the audit itself. **These two
+boolean series are production checks** — day 7's panel runs them per
+ticker; any False is a data-integrity finding, and the event DATE it
+points to is the diagnosis.
+
+## E4 — vs the provider (online; exemplar notes)
+
+Hand vs provider: ratio constant to ~1e−6 (providers anchor
+adjustments to different dates — a constant scale, identical
+returns; corr = 1.0000). Shift one dividend's ex-date by one day: the
+hand/provider ratio develops a step of ~D/P ≈ 0.1% at that date,
+flat elsewhere. **Event errors are steps, not smears** — which is
+exactly why the audit pair can localize a disagreement to a specific
+date and check it by hand.
