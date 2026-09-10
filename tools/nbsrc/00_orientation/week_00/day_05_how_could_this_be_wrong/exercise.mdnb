@@ -1,0 +1,165 @@
+# Day 5 — Exercise: Manufacture a Great Strategy from Noise
+
+**The most important exercise of module 00.** You will build a "world-class"
+backtest from data that contains, by construction, zero predictability — and
+then watch it die out of sample.
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+
+plt.rcParams["figure.figsize"] = (10, 4)
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    px = get_prices("SPY", start="2005-01-01")
+else:
+    px = synthetic_prices(n_days=3500, n_assets=1, seed=13)
+    px.columns = ["SPY"]
+rets = px["SPY"].pct_change().dropna()
+print(f"{len(rets)} daily returns, {rets.index[0].date()} to {rets.index[-1].date()}")
+```
+
+## The honest backtester (read carefully — you'll reuse this pattern forever)
+
+```python
+def backtest(signal, rets):
+    """Backtest a {-1, +1} (or continuous) signal against daily returns.
+
+    Contract: the signal is decided using information up to and including day
+    t's close, and therefore earns day t+1's return. shift(1) enforces it.
+    """
+    positions = signal.shift(1).fillna(0.0)
+    return positions * rets
+
+def sharpe(pnl, ann=252):
+    return pnl.mean() / pnl.std() * np.sqrt(ann)
+```
+
+## 0. Predict first (commit, in writing)
+
+The "strategies" below are random long/short positions that drift slowly
+(changing, on average, about weekly — like real signals do). If you generate
+200 of them and keep the best in-sample Sharpe, what will it be? Commit to a
+number before running.
+
+```python
+# My prediction for the best of 200 in-sample Sharpe:
+```
+
+## 1. The mining experiment (200 trials)
+
+Split: first 70% in-sample (IS), last 30% out-of-sample (OOS). For each
+trial: generate slow random noise, take its sign as the signal, backtest,
+record IS and OOS Sharpe.
+
+```python
+rng = np.random.default_rng(42)
+
+def random_signal(rng, index):
+    """A slowly-varying random {-1, +1} signal — pure noise, no return knowledge."""
+    noise = pd.Series(rng.standard_normal(len(index)), index=index)
+    return np.sign(noise.rolling(5).mean()).fillna(0.0)
+
+n_trials = 200
+is_edge = int(len(rets) * 0.7)
+
+records, signals = [], {}
+for t in range(n_trials):
+    signal = None  # YOUR CODE: random_signal(rng, rets.index)
+    pnl = backtest(signal, rets)
+    signals[t] = signal
+    records.append({"trial": t,
+                    "sharpe_is":  sharpe(pnl.iloc[:is_edge]),
+                    "sharpe_oos": sharpe(pnl.iloc[is_edge:])})
+df = pd.DataFrame(records).set_index("trial")
+
+print(df.describe().round(3))
+```
+
+**Q1.** Report: the best IS Sharpe among 200 trials; how many trials beat
+Sharpe 0.75 IS; and the correlation between `sharpe_is` and `sharpe_oos`
+across trials. What *should* that correlation be if edges were real?
+
+```python
+# YOUR CODE
+```
+
+## 2. The champion
+
+Take the best-IS trial. Report its IS and OOS Sharpe. Plot its full-sample
+cumulative P&L (IS and OOS regions marked) and a histogram of all 200 IS
+Sharpes with the champion marked.
+
+```python
+best_trial = None  # YOUR CODE: idxmax of sharpe_is
+champ_pnl = backtest(signals[best_trial], rets)
+# YOUR CODE: report + plots
+```
+
+**Q2.** The champion's in-sample curve looks like a serious strategy.
+Explain the mechanism precisely: given every signal is noise, where did the
+performance come from?
+
+```python
+# Your answer:
+```
+
+## 3. Escalate the search
+
+Rerun the experiment with `n_trials = 2000` (fresh records). Report the best
+IS Sharpe and its OOS Sharpe. What is the first trial number whose IS Sharpe
+exceeds 1.5? If you showed your boss *only* that trial, what would they
+conclude, and what would be true?
+
+```python
+# YOUR CODE (reuse the loop; don't re-predict)
+```
+
+## 4. The look-ahead specimen (fix it)
+
+```python
+buggy_pnl = rets.rolling(5).mean() * rets   # 5-day momentum, unshifted
+print(f"buggy Sharpe: {sharpe(buggy_pnl):.2f}")
+fixed_pnl = None  # YOUR CODE
+# print(f"fixed Sharpe: {sharpe(fixed_pnl):.2f}")
+```
+
+Run both. Explain the difference in one or two sentences.
+
+```python
+# Your answer:
+```
+
+## 5. Reflection (this is the anchor — it goes in your research log)
+
+In your own words: what does today's experiment imply about (a) backtests on
+the internet, (b) published papers, (c) your own future research process?
+Five sentences maximum.
+
+```python
+# Your answer:
+```
+
+## Hints (ordered)
+
+- 1: the IS–OOS correlation of noise strategies should be ≈ 0; anything else
+  means in-sample luck predicts out-of-sample luck, which it can't.
+- 2: the max of 200 draws from a bell curve centered at 0 sits far in the
+  right tail. The *search* manufactures the champion.
+- 4: shift(1); the unshifted version lets today's signal "know" today's return.

@@ -1,0 +1,93 @@
+# Day 3 — Solution: The JT93 Dissection (exemplar)
+
+*Your wording will differ. Check the* content *against this: question, H₀,
+data spec, construction. Anything you missed — reread that section of the
+paper itself, not this solution.*
+
+## Steps 1–4 (worksheet exemplar)
+
+```python
+data_spec = {
+    "universe": "NYSE + AMEX common stocks, US (survivorship handled via CRSP, incl. delistings)",
+    "period": "January 1965 – December 1989",
+    "frequency": "monthly returns",
+    "source": "CRSP (Center for Research in Security Prices)",
+    "filters": "minimum price / return-history requirements (tradability screens)",
+    "key_variable": "cumulative return over months t-12 to t-2 (formation), held 3-12 months",
+}
+for k, v in data_spec.items():
+    print(f"{k:14s}: {v}")
+```
+
+**Step 1 — Research question.** Do past returns predict future returns over
+the medium term (months)? If yes, markets are not weak-form efficient.
+
+**Step 2 — Economic intuition (two stories, both partial).**
+(a) *Under-reaction*: information diffuses slowly; investors update lazily,
+so news is only gradually impounded — the "other side" is whoever sold you
+the winner too cheaply because they hadn't finished reacting.
+(b) *Behavioral / disposition*: investors sell winners too early and ride
+losers too long, damping the price response in both directions — the other
+side is the disposition-prone crowd itself.
+Also note the *risk-based* story a skeptic will raise: maybe winners are
+simply riskier stocks, so the spread is compensation, not mispricing. A
+paper's step 2 should list its rival — you'll test that rival in module 07
+with factor regressions.
+
+**Step 3 — Hypothesis.** H₀: E[R_future | past 12–2m return] is flat across
+past-return ranks (no predictability). H₁: it is increasing (winners keep
+winning). NOT tested: tradability after costs (step 9), the cause (step 11),
+and whether the effect survives outside 1965–1989 (step 10/12 — you'll do
+this yourself in module 07 with 1990s→ data).
+
+**Step 4 — Data.** The table printed above. Note for later: CRSP includes
+delisted stocks — when *you* reproduce on free data (which excludes them),
+your universe differs in a direction you will quantify (momentum's short leg
+needs real losers; missing dead firms biases your result — which way? module
+05 answers, and it's not the direction most people guess).
+
+**Construction (plain English).** Each month: rank every eligible stock by
+its return from 12 months ago to 2 months ago. Buy the top 10%, sell the
+bottom 10%. Hold for 3–12 months; because new portfolios form monthly while
+old ones are still held, returns are averages of overlapping portfolios
+(this "overlapping portfolios" trick is JT93's methodological signature —
+module 07 implements it line by line).
+
+## Table anatomy — expected answers
+
+**Q1 — Monotonicity.** The illustrative gradient rises smoothly from losers
+(−0.15%) to winners (+1.25%). Smoothness matters because a spread driven by
+one extreme decile could be a single illiquid-corner artifact, while a
+monotone gradient across nine interior portfolios suggests a systematic
+relationship with the ranking variable.
+
+**Q2 — Evidence strength.** A t-stat of 4.6 says: *if the true spread were
+zero*, an estimate this large would be wildly improbable — the observed
+1.40%/month stands roughly 4.6 "standard errors" away from zero. A t-stat of
+0.9 on the same 1.40% would mean the estimate is well within ordinary
+sampling noise — the same *number* with almost no *evidence*. (What a
+standard error is, formally: module 04. Today's takeaway: never read the
+point estimate without its t-stat.)
+
+**Q3 — What you'd need.** A panel of monthly returns for the full universe
+(rank variable = past 12–2m return) plus eligibility filters (price,
+history). With `qrc` you can already build the return panel
+(`get_prices` on a universe); what you *can't* get free is the
+survivorship-free 1965–1989 universe — which is why your module 07
+reproduction runs on a different period and a biased universe, with the bias
+audited rather than ignored.
+
+## Reading order (from memory)
+
+1. Abstract → 2. end of introduction → 3. tables → 4. data section →
+5. methodology. Two questions running: *what would make this table wrong?*
+and *how much money is this after costs?*
+
+## Common mistakes
+
+- Reporting the hypothesis as "momentum works" — a hypothesis must be a
+  precise, falsifiable statement (flat vs increasing conditional expectation).
+- Missing the skip-month (t−12 to t−2) in the construction — it's the detail
+  that separates momentum from short-term reversal, and forgetting it mixes
+  two different phenomena (module 10).
+- Treating the data section as boilerplate. It is the reproduction contract.

@@ -1,0 +1,61 @@
+# Day 6 — Exercise: Cold Spot-Check
+
+No notes, no scrolling. Write each answer in the cell, *then* verify with
+code where code can check it. The review.md questions cover the rest of the
+week.
+
+## 1. The snippet, from memory
+
+Write, from memory, (a) the buggy momentum backtest line and (b) the fixed
+version. Then verify the fixed one runs.
+
+```python
+# (a) buggy:
+# (b) fixed:
+```
+
+## 2. The one-liner, from memory
+
+63-day rolling annualized volatility of a returns Series `r`:
+
+```python
+# r.rolling(...
+```
+
+## 3. Conversions, from memory
+
+Convert −50% and +100% simple returns to log returns (compute to check, but
+commit to an answer first):
+
+```python
+# my committed answers: -50% -> ..., +100% -> ...
+```
+
+## 4. The six biases, from memory
+
+List them with a one-line example each. (Then check against day 5's review.)
+
+```python
+# 1.
+# 2.
+# 3.
+# 4.
+# 5.
+# 6.
+```
+
+## 5. JT93's data spec, from memory
+
+Universe / period / frequency / ranking variable / headline finding:
+
+```python
+# ...
+```
+
+## 6. Systems check (outside the notebook — do it for real)
+
+- [ ] PROGRESS.md: days 1–5 marked, minutes logged
+- [ ] Spaced-repetition rows created (returns, biases, JT93, look-ahead fix)
+- [ ] Error log: ≥ 3 entries
+
+Nothing to run here — just don't skip it.

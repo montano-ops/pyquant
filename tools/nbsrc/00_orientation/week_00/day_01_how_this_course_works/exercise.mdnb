@@ -1,0 +1,113 @@
+# Day 1 — Exercise: Environment + First Contact with Data
+
+**Rules of engagement:** attempt every cell before looking at `solution.ipynb`.
+The only "wrong answer" today is skipping the attempt.
+
+## 0. Setup (run this; it must work)
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+
+plt.rcParams["figure.figsize"] = (10, 4)
+
+# 'real' downloads from Yahoo Finance (needs internet, cached afterwards);
+# 'synthetic' = seeded simulated data (fat tails + vol clustering).
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+print(f"DATA_SOURCE = {DATA_SOURCE}")
+print("numpy", np.__version__, "| pandas", pd.__version__)
+```
+
+```python
+from qrc.synth import synthetic_prices
+
+px = synthetic_prices(n_days=1000, n_assets=1, seed=7)
+px.plot(title="Synthetic daily prices, S0", legend=False)
+plt.show()
+```
+
+If both cells ran: your environment is ready. If not, fix it now — everything
+else in the course depends on this.
+
+## 1. First look (5 min, answer in the markdown cell below)
+
+Run these, look hard at both plots, then answer.
+
+```python
+rets = px["S0"].pct_change().dropna()
+
+fig, ax = plt.subplots(1, 2, figsize=(12, 4))
+ax[0].plot(px.index, px["S0"]); ax[0].set_title("Price level")
+ax[1].plot(rets.index, rets);  ax[1].set_title("Daily returns")
+plt.tight_layout(); plt.show()
+
+print(f"mean daily return: {rets.mean():.5f}")
+print(f"std  daily return: {rets.std():.5f}")
+```
+
+**Your answer:** Describe in 2–3 sentences what the *price* plot shows vs what
+the *returns* plot shows. Which one looks "predictable"? Which one will you
+actually be studying for 46 weeks?
+
+```python
+# Answer in this markdown cell (double-click to edit):
+```
+
+## 2. The rules, in your own words (5 min)
+
+Without scrolling up to lesson.md: write the five rules of engagement from
+memory in the cell below. Then check against the lesson and note what you
+missed — that's your first spaced-repetition entry.
+
+```python
+# 1. 
+# 2. 
+# 3. 
+# 4. 
+# 5. 
+```
+
+## 3. Signal vs noise, first taste (10 min)
+
+Using the numbers printed above:
+
+```python
+signal_to_noise = rets.mean() / rets.std()
+print(f"mean/std of daily returns: {signal_to_noise:.4f}")
+print(f"-> on an average day, the 'edge' is {abs(signal_to_noise) * 100:.3f}% of the noise")
+```
+
+**Your answer:** You will meet this ratio again in module 02 as the heart of
+the Sharpe ratio. In plain words: what does it mean that the average daily
+return is a tiny fraction of the typical daily fluctuation? What does it
+imply about judging an investment by looking at a week of its returns?
+
+```python
+# Answer here:
+```
+
+## 4. Reflection (from lesson.md §7 — write your answers here)
+
+```python
+# 1. Which of the five rules will be hardest for you, and why?
+# 
+# 2. Your honest goal in 12 months:
+```
+
+## Hints
+
+- §1: price level = compounding (smooth-looking); returns = the noise you'll model.
+- §2: attempt-before-solution, retrieval-without-notes, spaced repetition,
+  research log, how-could-this-be-wrong.
+- §3: mean/std is a *daily* Sharpe-like ratio; small values mean short
+  samples tell you almost nothing.
