@@ -1,0 +1,79 @@
+# Day 5 — Exercise: Errors, Power, Effect Size
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+from scipy import stats
+```
+
+## E1 (L4) — The power curve, three ways
+
+For SR = 0.5, one-sided 5%: compute power at Y = 1, 3, 5, 10, 25 by
+(a) the analytic Φ(SR√Y − 1.645); (b) simulation (2,000 runs each);
+(c) reconcile with the years-to-80%-power table. All three agree to
+2 decimals or find the bug.
+
+```python
+# YOUR CODE
+```
+
+## E2 (L4) — The 2×2, priced
+
+A shop's economics: funding a null strategy costs $2M (expected
+drawdown losses before firing); passing on a real SR-0.5 strategy
+costs $8M in forgone fees. With α = 5% one-sided and power 30% at
+their evaluation horizon: what's the expected cost of their decision
+rule? What α would minimize it (roughly)?
+
+```python
+# Your code + answer:
+```
+
+## E3 (L5) — Posterior discounts
+
+With power 60% and α = 5%: P(real | significant) at base rates 1/5,
+1/10, 1/50. Then flip it: given a significant result, what base rate
+would make the posterior 90%? What does that number tell you about
+the shop's actual "hit rate" on new ideas?
+
+```python
+# YOUR CODE
+```
+
+## E4 (L6) — Design a study
+
+You want to detect a 3bp/day edge on 1.1% daily vol at 80% power,
+one-sided 5%. Compute n (days and years). Now the cross-sectional
+trick: a market-neutral portfolio of 30 such edges has ~1.1%/√30 =
+20bp daily vol — recompute n. What did diversification just buy you?
+
+```python
+# Your code + answer:
+```
+
+## E5 (L7) — Where could this mislead?
+
+A quant blog: "Our signal is highly significant (t = 6.8) — surely
+you agree it's real." Three distinct reasons a huge t can still be a
+false positive. One paragraph, no repetition.
+
+```python
+# Your answer:
+```
+
+## Hints
+
+- E2: expected cost = P(fund|null)·2M·(base of nulls) + P(pass|real)·
+  8M·(base of reals) — the base rates matter; assume 90% nulls.
+- E4: n = ((1.645+0.84)·σ/δ)²; dividing σ by √30 divides n by 30 —
+  diversification is a data multiplier.

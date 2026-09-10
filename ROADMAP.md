@@ -3,11 +3,11 @@
 This is the canonical map of the course: every module, every week, every day,
 every paper, and how they connect. Modules 00–03 are fully authored (day
 folders contain lesson / exercise / solution / review, all solution
-notebooks execute end-to-end). Modules 04–15 are fully **specified** at
-the day level below and in each module's README — their day folders are
-authored to the same standard progressively (see
-[AUTHORING.md](AUTHORING.md) for the exact template; this table marks
-each module's status).
+notebooks execute end-to-end). Module 04 is partially authored (week 8);
+modules 04–15 are otherwise fully **specified** at the day level below and
+in each module's README — day folders are authored to the same standard
+progressively (see [AUTHORING.md](AUTHORING.md) for the exact template;
+the status table marks each module's state).
 
 **Legend:** ✅ authored (complete day folders) · 🟨 partially authored · 🔲 specced (blueprint below + module README)
 
@@ -60,7 +60,7 @@ speed: the retrieval practice, spacing, and re-derivations ARE the course.
 | 01 | [Mathematical foundations](01_math/) | 1–2 | ✅ |
 | 02 | [Probability](02_probability/) | 3–5 | ✅ |
 | 03 | [Statistics](03_statistics/) | 6–7 | ✅ |
-| 04 | [Statistical inference](04_inference/) | 8–10 | 🔲 |
+| 04 | [Statistical inference](04_inference/) | 8–10 | 🟨 (week 8 authored; 9–10 specced) |
 | 05 | [Financial data](05_financial_data/) | 11–12 | 🔲 |
 | 06 | [Regression](06_regression/) | 13–15 | 🔲 |
 | 07 | [Asset pricing & factors](07_asset_pricing/) | 16–19 | 🔲 |
@@ -175,10 +175,11 @@ statistics, and know exactly how each one can mislead.*
 | 03.13 | Review | Retrieval + interleaved problems | — |
 | 03.14 | Module checkpoint: anatomy of a distribution | Full EDA mini-report on a chosen asset (first formal research report) | — |
 
-## Module 04 — Statistical inference (Weeks 8–10) 🔲
+## Module 04 — Statistical inference (Weeks 8–10) 🟨
 
 *Goal: answer "could this be luck?" with machinery you understand from the
-inside. Specced below and in the module README.*
+inside. Week 8 is authored; weeks 9–10 are specced below and in the module
+README.*
 
 | Day | Title | What you do | Paper hook |
 |---|---|---|---|

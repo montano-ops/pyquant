@@ -1,0 +1,131 @@
+# Day 4 — Solution: The t-Test for Mean Returns
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+from scipy import stats
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    r = get_prices("SPY", start="1993-01-01")["SPY"].pct_change().dropna()
+else:
+    r = synthetic_prices(n_days=8000, n_assets=1, seed=46)["S0"].pct_change().dropna()
+```
+
+## E1 — the identity and the law
+
+```python
+n = len(r)
+t_long = r.mean()/(r.std(ddof=1)/np.sqrt(n))
+sr_a = r.mean()/r.std()*np.sqrt(252)
+t_short = sr_a*np.sqrt(n/252)
+print(f"t long way {t_long:.3f} vs SR·√Y {t_short:.3f}")
+
+rng = np.random.default_rng(0)
+for sr in [0.3, 0.5, 1.0]:
+    mu_d = sr/np.sqrt(252)
+    cross = []
+    for run in range(200):
+        x = rng.normal(mu_d, 0.01, 30*252)
+        t_run = np.cumsum(x)/ (0.01*np.sqrt(np.arange(1, len(x)+1)))  # known sigma shortcut
+        yrs = np.arange(1, len(x)+1)/252
+        idx = np.argmax(t_run >= 2.0) if (t_run >= 2.0).any() else len(x)
+        cross.append(yrs[idx])
+    print(f"SR={sr}: median first t>=2 at {np.median(cross):.1f}y (law: {(2/sr)**2:.1f}y)")
+```
+
+**Expected reasoning.** The identity holds to machine precision; the
+median crossing times land within ~15% of (2/SR)² — SR 0.5: ~16y; SR
+1.0: ~4y; SR 0.3: ~44y (the last is censored at 30y for many runs —
+report the censoring!). **SPY's own t ≈ 3–4 over 30+ years says the
+market's Sharpe is ~0.6: even the best-known risk premium in finance
+needed decades to clear the bar.**
+
+## E2 — size distortion table
+
+```python
+rng = np.random.default_rng(1)
+def rej_rate(n, reps=4000):
+    x = rng.standard_t(5, (reps, n))/np.sqrt(5/3)*0.01
+    t = x.mean(axis=1)/(x.std(axis=1, ddof=1)/np.sqrt(n))
+    crit = stats.t.ppf(0.975, n-1)
+    return (np.abs(t) > crit).mean()
+for n in [60, 252, 1000]:
+    print(f"n={n:5d}: rejection {rej_rate(n):.1%} (nominal 5%)")
+```
+
+**Expected numbers.** n=60: ~6.5–8%; n=252: ~5.5–6%; n=1000: ~5%.
+**The CLT repairs the mean's t by n ≈ 500–1000 even with t(5)
+parents; the disease is confined to small samples — which is exactly
+where monthly strategy evaluation lives.** The repair is why daily
+data with fat tails is still testable, and monthly data with fat
+tails is barely.
+
+## E3 — clustering distortion
+
+```python
+rng = np.random.default_rng(2)
+def clustered_null(n):
+    hi = rng.random(n) < 0.05
+    vol = np.where(hi, 0.02, 0.005)          # unconditional ~1% (check!)
+    # match unconditional sigma: E[vol^2] = .05*.02^2+.95*.005^2 = 2.4e-5 -> sd .0049
+    return rng.normal(0, vol)
+def rej_cluster(n, reps=4000):
+    out = 0
+    for _ in range(reps):
+        x = clustered_null(n)
+        t = x.mean()/(x.std(ddof=1)/np.sqrt(n))
+        out += abs(t) > stats.t.ppf(0.975, n-1)
+    return out/reps
+print(f"unconditional SD of process: {np.sqrt(0.05*0.02**2 + 0.95*0.005**2):.5f}")
+for n in [252, 2520]:
+    print(f"n={n}: clustered-null rejection {rej_cluster(n):.1%} (nominal 5%)")
+```
+
+**Expected Reasoning.** Rejection at n=252 runs ~6–9% (mixture
+non-normality at small n); at n=2520 it returns to ~5% (CLT) — **for
+the MEAN, clustering mostly harms through small-sample tails, because
+returns' own autocorrelation stays ~0.** The damaging effect of
+clustering is on SEs of *volatility-based* statistics and on
+overlapping-portfolio tests (where it explodes — week 9, day 13).
+State which statistic you're defending before quoting "clustering
+inflates the SE" — it's true, but not uniformly.
+
+## E4 — implied Sharpe
+
+```python
+for label, t, years, freq in [("a", 2.8, 8, 12), ("b", 4.1, 2, 252), ("c", 2.1, 30, 12)]:
+    n = years*freq
+    sr_p = t/np.sqrt(n)                      # per-period SR
+    print(f"{label}: SR per-period {sr_p:.3f} -> annualized {sr_p*np.sqrt(freq):.2f}")
+```
+
+(a) t=2.8, 8y → SR ≈ 0.99 annualized: a strong but attainable fund
+level. (b) t=4.1 on 2y → SR ≈ 2.9 annualized: superhuman — the best
+funds in history run below 2 sustained; expect an artifact (data
+error, look-ahead, or one lucky regime). (c) t=2.1 on 30y → SR ≈
+0.38: modest — very believable (a real but small edge, compounding
+for decades). **Ranking by plausibility: c > a > b; the t-stat alone
+ranks them b > a > c — exactly backwards.** The lesson: a t-statistic
+divided by √Y is an effect size; undivided, it's a marketing number.
+
+## E5 — the factsheet reply (exemplar)
+
+(1) "Significant against WHAT null — zero mean, or the benchmark,
+paired? Show the difference series and its SE." (2) "5 years: the
+implied Sharpe is t/√5 = 1.4 annualized — what's the mechanism for a
+1.4 Sharpe, and what did the sibling strategies do in the same
+period?" (3) "How many strategies were live-tested to produce this
+survivor — and can we see the graveyard?" Every one of the three
+questions converts an unanswerable claim into an auditable one.

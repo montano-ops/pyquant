@@ -2,14 +2,16 @@
 
 answer "could this be luck?" with machinery you understand from the inside. Specced below and in the module README..
 
-> **Status: specced, not yet authored.** The complete day-by-day blueprint
-> (title, what you do, paper hook for every day) lives in the
-> [ROADMAP](../ROADMAP.md) — this directory will be filled to the same
-> standard as modules 00–03 (lesson / exercise / solution / review per day;
-> see [AUTHORING.md](../AUTHORING.md)). Do not wait: the roadmap rows plus
-> the papers are enough for a strong learner to self-study, and the
-> authored modules deliberately hand you the machinery (distributions,
-> SEs, sampling, robustness, simulation) that makes that possible.
+> **Status: partially authored — week 8 (days 1–7) complete** (lesson /
+> exercise / solution / review per day; all solution notebooks execute
+> end-to-end). Weeks 9–10 (days 8–21) are specced in the
+> [ROADMAP](../ROADMAP.md) and will be filled to the same standard.
+
+| Week | Days | Theme |
+|---|---|---|
+| 8 | 1–7 | Estimation & SE → confidence intervals → hypothesis testing → the t-test for returns → errors/power/effect size; **mini-project: the t-statistic laboratory** |
+| 9 | 8–14 | Two-sample/paired → bootstrap → permutation → multiple testing → weekend-effect application → overlapping data; **mini-project: the significance grill** (specced) |
+| 10 | 15–21 | Reading papers' inference → effect vs tradability → review week; **checkpoint: does the effect survive?** (specced) |
 
 **Scale:** 21 days · weeks 8–10 · papers: French (1980) — reproduce; Harvey, Liu & Zhu (2016) — excerpt; JT (1993) Table 1 t-stats; Paper hook
 

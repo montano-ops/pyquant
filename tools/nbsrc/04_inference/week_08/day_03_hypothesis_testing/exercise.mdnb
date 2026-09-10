@@ -1,0 +1,77 @@
+# Day 3 — Exercise: Hypothesis Testing
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+from scipy import stats
+```
+
+## E1 (L3) — p is uniform under H₀
+
+5,000 samples of n=100 from N(0, 0.01): compute p-values of the
+two-sided t-test; plot the histogram; report P(p<0.05), P(p<0.01).
+Then repeat with a true mean of +0.002 — what shape does the p
+histogram take now?
+
+```python
+rng = np.random.default_rng(0)
+# YOUR CODE
+```
+
+## E2 (L4) — The significance dance
+
+A strategy with true SR 0.4 (daily units: mean 0.4/√252, σ 1%):
+simulate 20 years, compute the rolling 2-year t-stat monthly. Plot it
+with the ±1.96 lines. Count the crossings. What is a "significant"
+stretch worth?
+
+```python
+# YOUR CODE
+```
+
+## E3 (L5) — The 5% lottery, run
+
+100 null strategies, 1,000 simulations each: distribution of the
+number of "significant" results; P(≥1). Then: if the shop funds the
+best-of-100, what is its expected t-stat?
+
+```python
+# YOUR CODE
+```
+
+## E4 (L6) — One-sided honesty
+
+A quant reports p = 0.04 one-sided. In the appendix, the two-sided
+p is 0.08. Reconstruct what happened, and write the two-sentence
+policy that prevents it.
+
+```python
+# Your answer:
+```
+
+## E5 (L7) — Where could this mislead?
+
+"p = 0.20 — the effect doesn't exist." Write the correction with the
+power computation embedded (assume the plausible effect is SR 0.4, n =
+3 years).
+
+```python
+# Your answer:
+```
+
+## Hints
+
+- E1: under H₁ the p-distribution piles toward 0 — that pile IS
+  statistical power, visualized.
+- E3: E[max of 100 |t|] ≈ 2.8–3.2 — the "star" of the batch, from
+  pure noise.

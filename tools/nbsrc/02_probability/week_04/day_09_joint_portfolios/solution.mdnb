@@ -63,10 +63,12 @@ between a hedge and a doubling-up.**
 ```python
 if DATA_SOURCE == "real":
     px = get_prices(["SPY", "TLT"], start="2010-01-01")
+    r = px.pct_change().dropna()
 else:
-    px = synthetic_prices(n_days=3000, n_assets=2, seed=19, corr=-0.2)
+    px = synthetic_prices(n_days=3000, n_assets=2, seed=19, corr=0.2)
     px.columns = ["SPY", "TLT"]
-r = px.pct_change().dropna()
+    r = px.pct_change().dropna()
+    r["TLT"] = -r["TLT"]   # synth needs corr>=0; negate to model SPY/TLT's negative link
 s1, s2 = r["SPY"].std(), r["TLT"].std()
 cov = r.cov().iloc[0, 1]
 
