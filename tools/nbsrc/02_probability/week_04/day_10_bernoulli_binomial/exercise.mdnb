@@ -1,0 +1,80 @@
+# Day 10 — Exercise: Bernoulli & Binomial
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+from scipy import stats
+plt.rcParams["figure.figsize"] = (10, 4)
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+```
+
+## E1 (L3) — Binomial arithmetic
+
+p = 0.55. Compute exactly: P(≥ 138 wins in 252); P(≤ 120 wins in 252);
+expected wins and SD of wins in a year. Then the normal-approximation
+z-score for the first one — how close?
+
+```python
+# YOUR CODE
+```
+
+## E2 (L4) — The SE table, verified by simulation
+
+For n ∈ {20, 63, 252, 1260} and true p = 0.55: simulate 5,000 measured
+win rates each; report the SD of the measurements vs the formula
+√(p(1−p)/n). This table is the day — keep the output.
+
+```python
+rng = np.random.default_rng(10)
+# YOUR CODE
+```
+
+## E3 (L5) — A real win rate, with its uncertainty
+
+SPY daily returns (2005→): up-day rate p̂, n, SE, and the 95% band. Is
+p̂ distinguishable from 50%? From 52%? (Two different questions — answer
+both.) What does your answer imply about "the stock market has an upward
+drift" as a *tested* claim?
+
+```python
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+# YOUR CODE
+```
+
+## E4 (L6) — The Twitter account
+
+An account shows 8 winning months of 10. (a) P(≥8 | p=0.5)? (b) If 1,000
+such accounts exist and only the best one posts, what's the *expected*
+best record? (c) What single question would you ask before following?
+
+```python
+# YOUR CODE + answers:
+```
+
+## E5 (L7) — Frequency confound
+
+Strategy A: 60% win rate, 40 trades/year. Strategy B: 52%, 2,500 trades/
+year. Which is better *evidence* of an edge (quantify with SEs)? Which
+could still be the worse *strategy*, and why?
+
+```python
+# Your answer:
+```
+
+## Hints
+
+- E1: `stats.binom.cdf` (careful: ≥ needs 1 − cdf(k−1)); z =
+  (p̂−p)/√(p(1−p)/n).
+- E4(b): simulate 1,000 fair 10-month records; take the max of wins.

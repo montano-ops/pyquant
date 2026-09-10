@@ -1,0 +1,106 @@
+# Day 1 — Solution: Estimation & Standard Error
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    px = get_prices(["SPY", "TLT"], start="2010-01-01")
+else:
+    px = synthetic_prices(n_days=4000, n_assets=2, seed=44, corr=0.2)
+    px.columns = ["SPY", "TLT"]
+r = px["SPY"].pct_change().dropna()
+tlt = px["TLT"].pct_change().dropna()
+if DATA_SOURCE != "real":
+    tlt = -tlt   # synth needs corr>=0; negate to model SPY/TLT's negative link
+```
+
+## E1 — the SE table
+
+```python
+n = len(r); z = (r - r.mean())/r.std()
+rows = [
+    ("mean", r.mean(), r.std()/np.sqrt(n)),
+    ("SD", r.std(), r.std()/np.sqrt(2*n)),
+    ("skew", z.skew(), np.sqrt(6/n)),
+    ("kurt", (z**4).mean()-3, np.sqrt(24/n)),
+]
+for nm, est, se in rows:
+    print(f"{nm:6s}: {est:+.4f} ± {se:.4f} (n={n})")
+```
+
+**Expected reasoning.** Relative precision: SD ~1–2% relative; skew
+~10–20% relative (its value is small and SE 0.08-ish); kurtosis
+similar in absolute terms but its value is huge, so relative ~5%. **The
+mean is the least precise relative to its own size** (value 0.03%,
+SE 0.016% — a 50% band) — the recurring theme, now with the full
+table: everything else in finance is measurable; the drift is not.
+
+## E2 — the pairing dividend
+
+```python
+d = (r - tlt).dropna()
+se_paired = d.std()/np.sqrt(len(d))
+se_indep = np.sqrt(r.var()/len(r) + tlt.var()/len(tlt))
+rng = np.random.default_rng(0)
+boot = np.array([d.values[rng.integers(0, len(d), len(d))].mean() for _ in range(2000)])
+print(f"paired: {se_paired:.5f} | independent: {se_indep:.5f} | "
+      f"ratio {se_indep/se_paired:.2f} | bootstrap {boot.std():.5f}")
+```
+
+**Expected reasoning.** The bootstrap confirms the paired formula. The
+independent formula overstates by ~2–3× (for SPY−TLT, ρ ≈ −0.2 to 0:
+ratio √((sA²+sB²)/(sA²+sB²−2ρsAsB)) — even at ρ=0 they'd match; the
+dividend here is small because SPY/TLT are weakly correlated; for two
+equity strategies (ρ ≈ 0.9) it's ~3–5×). **The dividend IS the
+covariance term: shared market noise cancels in the difference.** Any
+"strategy vs benchmark" claim computed with the independent SE is
+understating its own significance — a conservative error, unusually.
+
+## E3 — the honesty multiplier
+
+```python
+acf_r = np.array([r.autocorr(k) for k in range(1, 21)])
+acf_a = np.array([r.abs().autocorr(k) for k in range(1, 21)])
+neff_mean = n/(1 + 2*acf_r.sum())
+neff_sd  = n/(1 + 2*acf_a.sum())
+print(f"n_eff for mean: {neff_mean:,.0f} ({neff_mean/n:.2f}n); "
+      f"for SD: {neff_sd:,.0f} ({neff_sd/n:.2f}n)")
+print(f"mean SE: textbook {r.std()/np.sqrt(n):.5f} -> honest "
+      f"{r.std()/np.sqrt(neff_mean):.5f}")
+print(f"SD SE:   textbook {r.std()/np.sqrt(2*n):.5f} -> honest "
+      f"{r.std()/np.sqrt(2*neff_sd):.5f}")
+```
+
+**Expected reasoning.** Returns' own ACF ≈ 0 → n_eff/n ≈ 0.9–1.0: the
+mean's SE barely moves (the CLT's luck). But |r| ACF is 0.1–0.25 with
+slow decay → n_eff/n ≈ 0.3–0.6: **anything volatility-based (SD,
+Sharpe, VaR backtests) has its textbook SE understated by √2–√3.**
+The asymmetry is the point: drift-statistics are (barely) protected by
+returns' near-independence; risk-statistics live on the clustered
+quantity itself.
+
+## E4 — where this misleads (exemplar)
+
+Problem 1 — the SE formula: the independent difference SE ignores the
+(strongly positive, if both legs hold market exposure) covariance,
+*overstating* the SE — or, if the strategy is market-neutral and the
+benchmark is cash, misapplying the two-sample formula to what is really
+a one-sample problem. Problem 2 — overlapping positions at 5-day
+holding: the daily "observations" overlap 4/5, inducing autocorrelation
+≈ 0.8, so the true SE is ~√((2H−1)/H)... roughly 1.5–2× the naive —
+t = 2.2 is really t ≈ 1.2–1.5. **Direction: the overlap error runs the
+dangerous way (overstating significance) and dwarfs the pairing
+error.** Week 9's day 04.13 is this exact repair.

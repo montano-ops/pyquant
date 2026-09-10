@@ -1,0 +1,90 @@
+# Day 1 — Solution
+
+*Compare against your attempt. Where you differed, ask: did I lack the
+knowledge, or did I lack the habit? Only the second one is dangerous.*
+
+## Setup (as in the exercise)
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+
+plt.rcParams["figure.figsize"] = (10, 4)
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+
+from qrc.synth import synthetic_prices
+
+px = synthetic_prices(n_days=1000, n_assets=1, seed=7)
+px.plot(title="Synthetic daily prices, S0", legend=False)
+plt.show()
+```
+
+## §1 — Expected answer: level vs returns
+
+```python
+rets = px["S0"].pct_change().dropna()
+
+fig, ax = plt.subplots(1, 2, figsize=(12, 4))
+ax[0].plot(px.index, px["S0"]); ax[0].set_title("Price level")
+ax[1].plot(rets.index, rets);  ax[1].set_title("Daily returns")
+plt.tight_layout(); plt.show()
+
+print(f"mean daily return: {rets.mean():.5f}")
+print(f"std  daily return: {rets.std():.5f}")
+```
+
+**Expected reasoning.** The price plot shows *compounding*: a smooth-looking
+trend that hides all the interesting structure. The returns plot is
+"static" — near-zero mean, roughly symmetric bursts of noise, with visibly
+uneven density (quiet stretches, violent stretches). The level is what your
+broker shows you; the returns are what you will study for 46 weeks, because
+prices are dominated by compounding while returns are (approximately) the
+stationary raw material of statistics.
+
+**Common mistake.** Calling the price series "the data" and the returns "a
+transformation". For research it's the reverse: returns are the data; the
+price level is a derived, non-stationary summary (module 08 makes this
+precise).
+
+## §2 — The five rules (from memory)
+
+1. Attempt before solution.
+2. Retrieval without notes.
+3. Spaced repetition (revisit on a schedule; concepts recur across modules).
+4. Research log (dated decisions, especially post-result ones).
+5. "How could this be wrong?" on every result.
+
+**Common mistake.** Treating these as etiquette. They are the course's
+learning-science engine: retrieval and generation beat rereading; spacing
+beats massing; the log is your defense against your own data snooping (day 5
+showed why the log must exist).
+
+## §3 — Signal vs noise
+
+```python
+snr = rets.mean() / rets.std()
+print(f"mean/std of daily returns: {snr:.4f}")
+```
+
+**Expected reasoning.** With mean ≈ 0.0005 and std ≈ 0.01, the average daily
+"edge" is ~5% of one day's noise. A single day tells you nothing; a month
+tells you almost nothing; resolving a real edge of this size statistically
+takes **years** of data (module 04 makes this quantitative — it's the reason
+most track records are meaningless). Any judgment of a strategy on a few
+months of performance is a judgment of its noise, not its edge.
+
+## §4 — Reflection (yours to write; the honest ones are the useful ones)
+
+No canonical answer. The strong versions reference *specific* personal
+failure modes ("I read solutions when frustrated, not when stuck") and
+*specific* goals with dates.

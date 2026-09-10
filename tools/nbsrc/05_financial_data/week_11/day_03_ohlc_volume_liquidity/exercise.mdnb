@@ -1,0 +1,84 @@
+# Day 3 — Exercise: OHLC, Volume, Liquidity
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+```
+
+## E1 (L4) — A three-liquidity universe, constructed
+
+Build (real or synthetic) a panel of three assets with distinct
+liquidity: an ETF-scale (DV ~$1B), a large stock (~$50M), a small
+stock (~$2M). Synthetic mode: construct prices + volumes directly.
+Compute dollar volume and Amihud (|r|/DV, in bp per $1M) for each.
+The spread should span orders of magnitude — report it in one line.
+
+```python
+rng = np.random.default_rng(2)
+# YOUR CODE
+```
+
+## E2 (L4) — The screens, applied
+
+Apply the standard screens to your three assets (price > $5, ADV >
+$1M, history ≥ 12m). Which pass? Then construct a borderline case:
+an $8 stock with $600k ADV whose signal (invented) is +0.4%/mo — the
+screen kills a tradable name; write the disposition policy (include
+with a flag? exclude? why?).
+
+```python
+# YOUR CODE + policy:
+```
+
+## E3 (L5) — Volume-vol, measured
+
+For each asset: corr(|r|, log DV). Synthetic mode: construct volume
+as |noise| × (1 + 0.5·|r|·scale) to embed a real relation, then
+measure your recovery of it. What would a NEGATIVE correlation
+indicate (one real-world mechanism)?
+
+```python
+# YOUR CODE
+```
+
+## E4 (L6) — Capacity arithmetic
+
+Your strategy: 4% of 20-day ADV participation cap, $500M AUM. For
+each of your three assets: max position at the cap. What fraction of
+your 50-name universe could absorb the book? (The concentration
+answer IS the capacity answer.)
+
+```python
+# Your code + answer:
+```
+
+## E5 (L7) — Where could this mislead?
+
+A paper: "we exclude stocks under $5, following convention." One
+paragraph: what this sentence hides, with the specific anomalies it
+distorts and the direction.
+
+```python
+# Your answer:
+```
+
+## Hints
+
+- E1: Amihud in bp per $1M = mean(|r|/DV) × 1e8 — units chosen so
+  numbers are 0.01–50 for real assets.
+- E4: max position = 0.04 × ADV(20d); the book fits iff Σ max
+  positions ≥ $500M with diversification constraints ignored.

@@ -1,0 +1,116 @@
+# Day 5 — Solution: Optimization & Least Squares
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from scipy.optimize import minimize
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    px = get_prices(["SPY", "XLE"], start="2015-01-01"); y_name, x_name = "XLE", "SPY"
+else:
+    px = synthetic_prices(n_days=2000, n_assets=2, seed=23, corr=0.6)
+    px.columns = [y_name, x_name] = ["XLE", "SPY"]
+r = px.pct_change().dropna()
+```
+
+## E1 — SSE by hand
+
+```python
+x = r[x_name].iloc[:10].values
+y = r[y_name].iloc[:10].values
+a, b = 0.0005, 1.2
+
+sse = 0.0
+for t in range(len(x)):
+    sse += (y[t] - a - b * x[t]) ** 2
+print(f"SSE = {sse:.6e}")
+```
+
+**Expected reasoning.** The loop *is* the Σ; the squared residual is the
+(vertical distance from the line)². Nothing here you can't compute on paper
+for 3 points — the formula doesn't get harder with T, only longer.
+
+## E2 — minimize it
+
+```python
+xv, yv = r[x_name].values, r[y_name].values
+
+def sse(theta):
+    a, b = theta
+    return float(np.sum((yv - a - b * xv) ** 2))
+
+for x0 in [[0.0, 1.0], [-0.01, 3.0], [0.002, 0.0]]:
+    res = minimize(sse, x0=x0)
+    print(f"x0={x0}: a={res.x[0]:.6f}, b={res.x[1]:.4f}, success={res.success}")
+```
+
+All starts converge to the same (â, b̂): SSE in (a, b) is a **convex
+paraboloid** — one bowl, one floor. (Burn this into memory as the *happy
+case*: GARCH likelihoods and neural nets are not bowls, and there the
+starting point and the convergence check are the difference between a
+result and a bug.)
+
+## E3 — the market model
+
+```python
+res = minimize(sse, x0=[0.0, 1.0])
+print(f"mine:     alpha={res.x[0]:.6f}, beta={res.x[1]:.4f}")
+
+import statsmodels.api as sm
+X = sm.add_constant(xv)
+print(f"statsmodels: {sm.OLS(yv, X).fit().params}")
+```
+
+Identical to ~1e-10. statsmodels solved the same minimization in closed
+form (the normal equations — day 11); nothing was done differently except
+*how* the floor was found (algebraically instead of by walking). **You have
+now implemented regression from scratch; the black box is transparent to
+you forever.**
+
+## E4 — the fit, visually
+
+```python
+a_hat, b_hat = res.x
+fig, ax = plt.subplots(1, 2, figsize=(12, 4))
+ax[0].scatter(xv, yv, s=6, alpha=0.4)
+xs = np.linspace(xv.min(), xv.max(), 50)
+ax[0].plot(xs, a_hat + b_hat * xs, color="red", lw=2)
+ax[0].set_xlabel(x_name); ax[0].set_ylabel(y_name)
+resid = yv - a_hat - b_hat * xv
+ax[1].scatter(xv, resid, s=6, alpha=0.4); ax[1].axhline(0, color="red", lw=1)
+ax[1].set_title("residuals vs x")
+plt.tight_layout(); plt.show()
+```
+
+Residuals ⊥ x looks like: a symmetric cloud with no tilt and no funnel
+shape in the residual-vs-x plot. (When the cloud *funnels* — variance
+growing with x — that's heteroskedasticity: module 06's robust standard
+errors exist precisely for that day.)
+
+## E5 — one outlier
+
+```python
+x2 = np.append(xv, 0.05); y2 = np.append(yv, -0.15)
+res2 = minimize(lambda th: float(np.sum((y2 - th[0] - th[1] * x2) ** 2)), x0=[0.0, 1.0])
+print(f"beta before: {b_hat:.4f} | after one outlier: {res2.x[1]:.4f}")
+```
+
+Beta moves substantially (often 5-15% relative) from ONE point out of
+thousands: squared error gives a point at distance d influence proportional
+to d², so a 5σ point can outweigh hundreds of ordinary days. **Defenses
+(module 06): winsorize returns, use robust estimators, and always plot
+residuals — crash days and data errors (a bad print, a stale quote) are
+indistinguishable to OLS.**

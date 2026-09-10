@@ -1,0 +1,86 @@
+# Day 14 — Checkpoint: Anatomy of a Distribution
+
+*Your workspace. The deliverable is the report — ≤400 words + exhibits.
+Closed notes; open data, open code.*
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import scipy.stats as st
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+from qrc.universe import load_universe
+
+# CHOOSE your asset (not SPY) — e.g. from load_universe("core_etfs")
+# YOUR CHOICE:
+ASSET = "XLE"
+if DATA_SOURCE == "real":
+    px = get_prices(ASSET, start="2005-01-01")
+else:
+    px = synthetic_prices(n_days=4000, n_assets=1, seed=42)
+    px.columns = [ASSET]
+r = px[ASSET].pct_change().dropna()
+```
+
+## Part 1 — Data audit
+
+n, range, missingness, |r|>25% scan, zero-runs, calendar sanity. The
+one-paragraph data verdict.
+
+```python
+# YOUR CODE + verdict:
+```
+
+## Part 2 — Full EDA
+
+All seven steps, exhibits titled.
+
+```python
+# YOUR CODE
+```
+
+## Part 3 — The statistics interrogation
+
+Three centers; SD vs MAD; tail multiple; rolling-mean vs its SE band;
+κ daily vs weekly.
+
+```python
+# YOUR CODE
+```
+
+## Part 4 — The report (≤400 words)
+
+Data → Distribution → Dependence → Limitations → Recommendation.
+Numbers attached to every verdict.
+
+```python
+# Your report:
+```
+
+## Part 5 — The bias audit
+
+Selection, window (halves), survivorship, multiplicity. Specific to
+YOUR asset and window.
+
+```python
+# Your audit:
+```
+
+## Hints (structural only)
+
+- The report is the deliverable; the notebook is its factory.
+- A verdict without a number is a hedge; a number without (±, n) is a
+  bug. Both lose points.

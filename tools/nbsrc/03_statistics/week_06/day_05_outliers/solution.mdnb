@@ -1,0 +1,126 @@
+# Day 5 — Solution: Outliers
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+from scipy import stats
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    px = get_prices("SPY", start="1993-01-01")
+else:
+    px = synthetic_prices(n_days=8000, n_assets=1, seed=35)
+    px.columns = ["SPY"]
+r = px["SPY"].pct_change().dropna()
+```
+
+## E1 — classical vs robust z
+
+```python
+med = r.median(); mad = 1.4826 * np.median(np.abs(r - med))
+z_class = (r - r.mean()) / r.std()
+z_rob = (r - med) / mad
+print(f"|z|>3: classical {(abs(z_class)>3).sum()} vs robust {(abs(z_rob)>3).sum()}")
+worst = z_rob.abs().sort_values(ascending=False).head(5).index
+print(pd.DataFrame({"ret": r[worst], "robust_z": z_rob[worst],
+                    "prev_day": r.shift(1)[worst]}).round(3))
+```
+
+**Expected reasoning.** Robust z flags MORE days (masking removed:
+classical σ̂ was inflated by the very extremes it should catch). The
+top dates on real SPY are 2008-10-13/15 (±9–11%), 2020-03-16 (−12%) —
+each surrounded by other extreme days: **real crashes come in herds,
+data errors come alone.** The neighbors are the fingerprint: a lone
+−35% with quiet neighbors is a split/vendor error; a −9% with ±6%
+neighbors is a market.
+
+## E2 — winsorize and trim, measured
+
+```python
+def kurt(x):
+    z = (x - np.mean(x)) / np.std(x)
+    return (z**4).mean() - 3
+
+rows = []
+for a in [0.01, 0.05]:
+    lo, hi = r.quantile([a, 1-a])
+    w = r.clip(lo, hi)
+    t = r[(r > lo) & (r < hi)]
+    rows.append([a, r.mean(), w.mean(), t.mean(), r.std(), w.std(), t.std(),
+                 kurt(r.values), kurt(w.values), kurt(t.values)])
+print(pd.DataFrame(rows, columns=["alpha", "mean_raw", "mean_w", "mean_t",
+      "SD_raw", "SD_w", "SD_t", "k_raw", "k_w", "k_t"]).round(4).to_string(index=False))
+```
+
+**Expected pattern.** Mean: barely moves (<10% relative even at 5%).
+SD: −15% (1%) to −30% (5%). Kurtosis: collapses from ~12 to ~4 (1%) to
+~1 (5%). **The powers of z explain the ordering: mean is z¹-diluted by
+n; SD is z²-weighted; kurtosis is z⁴-dominated — cleaning hits the
+high moments hardest. Winsorizing before risk statistics is therefore
+a *vol- and tail-shrinking machine*: it's legitimate for stabilizing
+estimators (day 2's MSE trade) and illegitimate for reporting risk.**
+
+## E3 — the one-day experiment
+
+```python
+def max_dd(s):
+    w = (1 + s).cumprod()
+    return (1 - w / w.cummax()).min()
+
+worst_day = r.idxmin()
+without = r.drop(worst_day)
+def report(s, tag):
+    z = (s - s.mean()) / s.std()
+    print(f"{tag:8s}: mean {s.mean():+.5f} SD {s.std():.4f} kurt {(z**4).mean()-3:6.1f} "
+          f"p1 {s.quantile(0.01):+.3%} maxDD {max_dd(s):+.1%}")
+report(r, "with")
+report(without, "without")
+print(f"worst day: {worst_day.date()} {r.min():+.2%}")
+```
+
+**Expected reasoning.** Mean/SD/p1 move little (p1 survives because
+the worst day is BEYOND the 1st percentile — it defines the extreme
+tail, not the quantile). Kurtosis drops materially; **max drawdown
+drops hugely and is owned by that one day** — a path statistic built
+from the worst cumulative sequence. "One observation deep": kurtosis
+(at short n) and max drawdown (always, if one day dominates the path).
+**A strategy whose headline is its max drawdown or its kurtosis is a
+strategy whose headline is one date.**
+
+## E4 — triage drill (exemplar answers)
+
+(a) −35% single day, normal volume, quiet neighbors: **split/dividend
+error** — check the raw price series for a halving (2:1 split) and
+corporate-actions file; real −35% moves in liquid large-caps come with
+5–10× volume and breathless neighbors. (b) −8% with 5× volume:
+**real crash day** — verify the calendar (CPI print? earnings?) and
+peers' same-day moves. (c) +45% after a flat streak: **short squeeze
+or halt-reopen** — check borrow rates/mentions; in data terms also
+check for a reverse split (1:10) which produces exactly this
+signature. **Order of checks: corporate actions first (cheapest,
+most likely for isolated extremes), calendar/news second, peers
+third.**
+
+## E5 — where this mislead (exemplar)
+
+Winsorizing at 0.5% caps both tails: the numerator (mean) is roughly
+preserved (up-days and down-days both capped, slight upward bias since
+the left tail is fatter), but the denominator (SD) shrinks ~10–20% and
+the tail risk that would produce a blow-up month is amputated —
+Sharpe 1.4 instead of ~1.1, and a "max drawdown" that has been
+manicured. The allocator's question: "what are the raw (unwinsorized)
+Sharpe, SD, and worst month — and what justification, in writing, was
+given for capping?" **Cleaning is a decision about the estimator;
+reporting the cleaned number as the asset's risk is a decision about
+the truth.**

@@ -1,0 +1,90 @@
+# Day 11 — Exercise: OLS by Hand
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+plt.rcParams["figure.figsize"] = (10, 4)
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    px = get_prices(["SPY", "XLE", "TLT"], start="2015-01-01")
+    y_name = "XLE"
+else:
+    px = synthetic_prices(n_days=2200, n_assets=3, seed=61, corr=0.5)
+    px.columns = ["SPY", "XLE", "TLT"]
+    y_name = "XLE"
+rets = px.pct_change().dropna()
+```
+
+## E1 (L4) — ols_by_hand
+
+Implement it (solve, not inv):
+
+```python
+def ols_by_hand(X, y):
+    """X: (T, k) design matrix (include the ones-column yourself). y: (T,)."""
+    # YOUR CODE
+    ...
+```
+
+## E2 (L5) — The market model, three ways
+
+Fit $R_{XLE} = a + b R_{SPY} + e$ by: (1) your `ols_by_hand`; (2) day 5's
+SSE minimization; (3) statsmodels. All three must agree. Report â, b̂.
+
+```python
+import statsmodels.api as sm
+# YOUR CODE
+```
+
+## E3 (L4) — The ones-column experiment
+
+Fit with and without the intercept column. Compare slopes. Then compute the
+mean of the residuals in each fit. What does the intercept "absorb", and
+what goes wrong numerically when it's missing?
+
+```python
+# YOUR CODE
+```
+
+## E4 (L5) — Multivariate: the FF-style stack
+
+Regress XLE on BOTH SPY and TLT (design matrix: ones, SPY, TLT). Report all
+three coefficients. Interpret each slope in slope/intercept language, then
+answer: why doesn't the SPY slope here equal the E2 slope?
+
+```python
+# YOUR CODE + answer:
+```
+
+## E5 (L7) — Collinearity, previewed
+
+Create a "fake factor": SPY returns + tiny noise. Regress XLE on SPY and
+fake-factor together. What happens to the two slopes (and would you trust
+either t-stat)? Name the phenomenon (module 06 formalizes it).
+
+```python
+# YOUR CODE + answer:
+```
+
+## Hints
+
+- E2: agreement to ~1e-10; if not, check ddof, centering, or a stray
+  intercept.
+- E5: near-singular X^T X — two nearly identical columns; slopes become a
+  coin-flip between near-collinear regressors (huge, opposite-signed).

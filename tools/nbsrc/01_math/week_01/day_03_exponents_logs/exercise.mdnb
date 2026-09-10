@@ -1,0 +1,99 @@
+# Day 3 — Exercise: Exponents, Logs, Growth
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+plt.rcParams["figure.figsize"] = (10, 4)
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    px = get_prices(["SPY", "TLT"], start="2010-01-01")
+    names = ["SPY", "TLT"]
+else:
+    px = synthetic_prices(n_days=3000, n_assets=2, seed=17, drift_spread=0.0002)
+    px.columns = names = ["SPY", "TLT"]
+r = px.pct_change().dropna()
+```
+
+## E1 (L3) — Hand-compute the three operators
+
+A strategy returns +10%, −10%, +10% over three days. By hand (then check in
+code): (a) the growth factor G; (b) the arithmetic mean; (c) the geometric
+mean (per-day); (d) the volatility-drag approximation vs the actual gap.
+
+```python
+rets = np.array([0.10, -0.10, 0.10])
+# (a) G = ...
+# (b) arith = ...
+# (c) geo = ...
+# (d) approx drag = var/2 ; actual gap = arith - geo
+```
+
+## E2 (L5) — The drag, measured on real assets
+
+For each asset: annualized arithmetic mean (mean×252), CAGR (geometric,
+annualized), measured gap, and the σ²/2 approximation (annualized variance
+over 2). Present as a DataFrame. Which asset pays more drag, and why?
+
+```python
+rows = []
+for name in names:
+    s = r[name]
+    # YOUR CODE: append dict with the four numbers
+pd.DataFrame(rows)
+```
+
+## E3 (L5) — Leverage and the drag
+
+Take SPY's returns. Compute CAGR of: 1×, 2×, 3× exposure (daily rebalanced:
+return × multiple, capped at −100% for survival). Plot CAGR vs multiple.
+Where does more leverage stop helping? Explain with the drag formula.
+
+```python
+# YOUR CODE
+```
+
+## E4 (L6) — Which mean is the paper reporting?
+
+A paper reports "mean monthly return of 1.0%" for a strategy with 4% monthly
+volatility. An investor annualizes to 12%. (a) What is the honest annual
+*growth* rate? (b) What did the investor implicitly assume away?
+
+```python
+# YOUR answer + check in code:
+```
+
+## E5 (L7) — Where could this mislead?
+
+"Fund X returned 40% in its best year; its 10-year CAGR is 6%." Explain, in
+drift-and-compounding terms, why both statements coexist — and what a
+backtest that reports only the good year commits.
+
+```python
+# Your answer:
+```
+
+## Hints
+
+- E1: G = 1.1 × 0.9 × 1.1 = 1.089 — the per-day geometric mean is its cube
+  root minus one.
+- E3: at daily-rebalanced leverage L, arith mean scales by L but variance by
+  L² — the drag grows quadratically; CAGR(L) ≈ L·μ − L²σ²/2 (per period).
+- E4: 12 × 1% assumes no variance; honest growth = (1.01)¹² − 1 ≈ 12.68%...
+  but with 4% monthly vol the drag is ≈ σ²/2 × 12 ≈ 0.96%/yr — smaller than
+  you'd think here; compute it exactly.

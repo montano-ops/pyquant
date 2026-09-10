@@ -1,0 +1,81 @@
+# Day 7 — Mini-Project: The t-Statistic Laboratory
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from scipy import stats
+plt.rcParams["figure.figsize"] = (10, 4)
+```
+
+## E1 — The t-road
+
+10,000 paths, TRUE SR = 0.5 (daily units), 30 years. Running t-stat
+per year; plot median + 5–95% band vs the SR√Y line and the 1.645
+threshold. P(reject, one-sided 5%) at y = 1, 5, 10, 16, 25. Verify
+against Φ(0.5√y − 1.645).
+
+```python
+# YOUR CODE
+```
+
+## E2 — The significance casino
+
+TRUE SR = 0: rolling 1-year t evaluated monthly over 5 years (start
+at month 12). P(some evaluation ≥ 1.645)? Over 10 years? Also: the
+"stop when significant" trader — median time to first false
+"discovery"?
+
+```python
+# YOUR CODE
+```
+
+## E3 — Fat tails
+
+Repeat E1 (SR=0.5) and E2 (SR=0) with t(5) innovations, σ-matched.
+Table of the changes at y = 5 and 25 (power) and the fixed-horizon
+false-positive rate.
+
+```python
+# YOUR CODE
+```
+
+## E4 — Clustering
+
+Repeat E1 with clustered vol (two-state, unconditional σ = 1%).
+Power at y = 5, 16, 25 vs iid?
+
+```python
+# YOUR CODE
+```
+
+## E5 — The verdict table + the four sentences
+
+[model × years] → P(reject). Then: (1) what a significant 3-year
+record proves; (2) what an insignificant one disproves; (3) the
+monitoring plan for a live SR-0.5 strategy; (4) what this lab changes
+about reading "significant" claims.
+
+```python
+# Your table + sentences:
+```
+
+## Hints
+
+- E1: work in σ=1 units — t = cumsum(x)/√(1..n); 10,000 × 7,560 is
+  one array; running mean via cumsum, running t via cumsum/ (σ√n).
+- E2: for each path, t at months 12, 13, ..., 60 (trailing 252d);
+  "some ≥ threshold" per path.
+- E4: to hold unconditional σ at 1% with states (σ_lo, σ_hi, p):
+  solve p·σ_hi² + (1−p)·σ_lo² = 1e−4.

@@ -1,0 +1,108 @@
+# Day 10 — Solution: Portfolio Variance
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+plt.rcParams["figure.figsize"] = (10, 4)
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+from qrc.universe import load_universe
+
+if DATA_SOURCE == "real":
+    tickers = load_universe("core_etfs")
+    px = get_prices(tickers, start="2015-01-01")
+else:
+    tickers = [f"S{i}" for i in range(12)]
+    px = synthetic_prices(n_days=2500, n_assets=12, seed=53, corr=0.4)
+    px.columns = tickers
+rets = px.pct_change().dropna()
+Sigma = rets.cov().values
+```
+
+## E1 — correlation buys (or removes) risk
+
+```python
+s1, s2, w1, w2 = 0.20, 0.12, 0.6, 0.4
+for rho in [0.35, 1.0, 0.0]:
+    cov = rho * s1 * s2
+    var = w1**2 * s1**2 + w2**2 * s2**2 + 2 * w1 * w2 * cov
+    print(f"rho={rho}: sigma_p = {np.sqrt(var):.2%}")
+```
+
+ρ=0.35 → 14.2%; ρ=1 → 16.8% (the weighted average of vols — no benefit);
+ρ=0 → 13.2%. Diversification's value is entirely inside the covariance term.
+
+## E2 — three ways, one number
+
+```python
+w = np.full(len(tickers), 1 / len(tickers))
+
+v1 = float(w @ Sigma @ w)
+v2 = sum(w[i] * Sigma[i, j] * w[j] for i in range(len(w)) for j in range(len(w)))
+v3 = float((rets @ w).var(ddof=1))
+print(v1, v2, v3)
+```
+
+All equal (v3 may differ from v1 by the 250/251 factor from ddof
+conventions — reconcile and *know* which convention each line uses). They
+must agree because Σ was estimated from the same returns: the algebra of
+variance and the empirical variance are the same object here.
+
+## E3 — the diversification curve
+
+```python
+rng = np.random.default_rng(7)
+ns = [1, 2, 3, 4, 6, 8, 10, 12]
+curve = []
+for n in ns:
+    vols = []
+    for _ in range(50):
+        cols = rng.choice(len(tickers), size=min(n, len(tickers)), replace=False)
+        w_n = np.full(n, 1 / n)
+        vols.append(np.sqrt(w_n @ Sigma[np.ix_(cols, cols)] @ w_n) * np.sqrt(252))
+    curve.append(np.mean(vols))
+
+avg_var = np.mean(np.diag(Sigma)) * 252
+avg_cov = (Sigma.sum() - np.trace(Sigma)) / (len(tickers) * (len(tickers) - 1)) * 252
+
+plt.plot(ns, curve, "o-", label="empirical equal-weight vol")
+plt.plot(ns, np.sqrt(avg_var / np.array(ns)), "--", label="avg variance / n")
+plt.axhline(np.sqrt(avg_cov), color="red", ls=":", label="avg covariance floor")
+plt.xlabel("n assets"); plt.ylabel("annualized vol"); plt.legend(); plt.show()
+```
+
+The empirical curve tracks the theory: vol falls like $\sqrt{\bar\sigma^2/n}$
+for small n, then flattens onto the average-covariance floor.
+
+## E4 — the floor
+
+```python
+print(f"average variance (ann): {np.sqrt(avg_var):.2%}")
+print(f"average covariance (ann), floor: {np.sqrt(avg_cov):.2%}")
+```
+
+**One-sentence answer:** in a crisis the average covariance is what remains
+after diversification has done all it can — for a 100-stock portfolio it is
+essentially *the* variance, so when average covariance doubles in a selloff,
+your "diversified" portfolio's risk doubles with it, no matter how many
+names you hold.
+
+## E5 — when the true curve sits above
+
+Your Σ averages calm and stormy regimes. In a stress regime (2008, 2020Q1,
+2022), correlations converge toward 1 (the flight-to-common-risk), average
+covariance rises, and the true curve sits well above yours — a portfolio
+sized on the calm-average curve is under-risked precisely when it matters,
+which is the empirical foundation of risk targeting and vol-regime
+management (modules 09, 11).

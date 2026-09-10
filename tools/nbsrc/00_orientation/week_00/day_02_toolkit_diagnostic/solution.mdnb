@@ -1,0 +1,202 @@
+# Day 2 — Solution: The Diagnostic
+
+*Grading rule: "wrong" (not slow) requires targeted review. Each task below
+lists the common wrong turns. Score yourself honestly in PROGRESS.md.*
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+
+plt.rcParams["figure.figsize"] = (10, 4)
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    px = get_prices(["SPY", "TLT", "QQQ"], start="2005-01-01")
+else:
+    px = synthetic_prices(n_days=3500, n_assets=3, seed=21)
+    px.columns = ["SPY", "TLT", "QQQ"]
+```
+
+## T1 — Date slicing
+
+```python
+px10 = px.loc["2010-01-01":"2019-12-31"]
+print(len(px10))
+```
+
+Both endpoints **inclusive** (label slicing). ~2516 rows for real data.
+**Common mistake:** `px[1:2516]`-style positional slicing or exclusive-end
+assumptions — silently off-by-one-day samples that no longer match a paper's.
+
+## T2 — Daily returns
+
+```python
+rets10 = px10.pct_change().dropna()
+rets10.tail(2)
+```
+
+The first NaN is not "missing data": there *is* no prior price, so there is
+no return. A missing price mid-series means "no trade / no quote" — a
+different object with different treatment (module 05). Confusing them is how
+people forward-fill a halt into a fake 0% day.
+
+## T3 — Annualized volatility
+
+```python
+ann_vol = rets10.std() * np.sqrt(252)
+print(ann_vol.round(4))
+```
+
+**Common mistake:** `* 252` instead of `* sqrt(252)` — volatility scales with
+the *square root* of time (variance scales linearly). Why: module 02.
+
+## T4 — Rolling volatility
+
+```python
+rv = rets10["SPY"].rolling(63).std() * np.sqrt(252)
+rv.plot(title="SPY 63-day annualized volatility")
+plt.show()
+```
+
+Calm and stormy stretches alternate — volatility **clusters** (a course-long
+theme; module 09 models it). Real data: 2011, 2020Q1, 2022 spike far above
+the calm of 2016–2019.
+
+## T5 — Weekly returns two ways
+
+```python
+weekly_a = px10["SPY"].resample("W-FRI").last().pct_change().dropna()
+weekly_b = np.log1p(rets10["SPY"]).resample("W-FRI").sum()
+
+diff = (weekly_a - weekly_b)
+print(diff.abs().describe().round(6))
+```
+
+Nearly identical: both measure Friday-to-Friday growth. The (tiny) gap is
+simple vs log aggregation — the weekly *simple* return is
+$P_t/P_{t-1}-1$; the weekly *log* return is its logarithm. They agree to
+second order and diverge in big moves. **Common mistake:** resampling daily
+returns with `.mean()` (averaging returns) — that measures neither.
+
+## T6 — Different histories
+
+```python
+late = px["TLT"].loc["2015-01-01":]
+r_spy, r_late = px["SPY"].pct_change(), late.pct_change()
+
+inner = pd.concat([r_spy, r_late], axis=1, join="inner").dropna()
+outer = pd.concat([r_spy, r_late], axis=1, join="outer")
+print(f"inner rows: {len(inner)}, NaNs: {inner.isna().sum().tolist()}")
+print(f"outer rows: {len(outer)}, NaNs: {outer.isna().sum().tolist()}")
+```
+
+Inner = dates where both exist (pairwise comparisons, correlations — anything
+where NaN poisons the computation). Outer = the full panel (cross-sectional
+research needs every asset's own history, with NaN meaning "not listed yet /
+anymore" — which is *information*, not dirt). **Common mistake:** building
+the research panel with inner joins — that's survivorship by accident.
+
+## T7 — Correlation, all days vs worst days
+
+```python
+inner = pd.concat([px["SPY"].pct_change(), px["TLT"].pct_change()], axis=1).dropna()
+inner.columns = ["SPY", "TLT"]
+worst_days = inner["SPY"].nsmallest(20).index
+print(f"corr all days : {inner['SPY'].corr(inner['TLT']):.3f}")
+print(f"corr worst 20 : {inner.loc[worst_days, 'SPY'].corr(inner.loc[worst_days, 'TLT']):.3f}")
+```
+
+Correlations are **conditional** — SPY–TLT is modestly negative overall, but
+on equities' worst days bonds' behavior is what determines whether your
+"diversified" portfolio survives the week. A single full-sample correlation
+hides exactly the tail structure that matters (module 02 formalizes; module
+09's covariance work inherits it).
+
+## T8 — Growth and drawdown
+
+```python
+growth = (1 + rets10["SPY"]).cumprod()
+dd = growth / growth.cummax() - 1
+print(f"max drawdown: {dd.min():.2%} (trough {dd.idxmin().date()})")
+
+fig, ax = plt.subplots()
+ax.plot(growth.index, growth); ax.set_title("SPY growth of $1 (2010s)")
+ax.axvline(dd.idxmin(), color="red", linestyle="--", label=f"trough {dd.idxmin().date()}")
+ax.legend(); plt.show()
+```
+
+**Common mistake:** `growth.min() - growth.cummax()` (a *level* difference,
+unit-dependent nonsense) instead of the *ratio* `growth/growth.cummax() - 1`.
+
+## T9 — Best and worst days
+
+```python
+print(rets10["SPY"].nlargest(5).round(4))
+print(rets10["SPY"].nsmallest(5).round(4))
+```
+
+Real SPY: worst days (−10%+ in Aug 2011, Mar 2020, or 2008-adjacent if
+sampled) are bigger than the best days (+5–10%). Downside magnitudes exceed
+upside — an asymmetry you'll quantify as **negative skew** in module 03.
+
+## T10 — Monthly returns
+
+```python
+monthly = px10.resample("ME").last().pct_change().dropna()
+print(monthly.agg(["mean", "std"]).round(4))
+```
+
+`"ME"` = month-end (pandas ≥ 2.2; `"M"` is deprecated). Monthly stats are
+much less noisy than daily — you'll use monthly frequency constantly when
+reproducing papers, exactly as JT93 does.
+
+## T11 — The bug
+
+```python
+r = rets10[["SPY"]].copy()
+signal = r.rolling(5).mean()
+pnl_buggy = (signal * r).sum(axis=1)
+
+pnl_fixed = (signal.shift(1) * r).sum(axis=1)
+print(f"buggy Sharpe: {pnl_buggy.mean() / pnl_buggy.std() * 252 ** 0.5:.2f}")
+print(f"fixed Sharpe: {pnl_fixed.mean() / pnl_fixed.std() * 252 ** 0.5:.2f}")
+```
+
+The bug: the 5-day mean return through day t is multiplied by day t's return
+— the strategy "reacts" to a signal that includes the very return it claims
+to capture. With positively autocorrelated momentum-signal periods it
+manufactures profit from nothing; at minimum it flatters. The fix — `shift(1)`
+— is the single most important line in this course: *decide at close t, earn
+day t+1*.
+
+## T12 — Reproduce the data section
+
+```python
+study = px.loc["2012-01-01":"2021-12-31", ["SPY", "QQQ"]] \
+          .resample("W-FRI").last().pct_change().dropna()
+print(f"n weeks: {len(study)}")
+print(study.agg(["mean", "std"]).round(5))
+print(f"corr: {study['SPY'].corr(study['QQQ']):.3f}")
+```
+
+~521 weekly observations. **Common mistakes:** forgetting `dropna()` (first
+week), using `W` instead of `W-FRI` (pandas' default week end is Sunday —
+every "Friday" would actually be the following Sunday's label), and slicing
+*after* resampling (boundary weeks change). This is exactly the mechanical
+layer where reproductions quietly fail — today you proved you can execute a
+paper's data section verbatim.

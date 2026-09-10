@@ -1,0 +1,78 @@
+# Day 2 — Exercise: Corporate Actions by Hand
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+```
+
+## E1 (L4) — The algorithm on a world you control
+
+Construct a **unit-consistent price path** P (300 days, $50 start,
+σ=1.5%): what the stock was "really" worth per original share. Events:
+2:1 split at day 100, 3:1 at day 220, $0.50 dividends every 21 days.
+The **raw as-traded series** is P ÷ cumulative split ratio. The
+**holder's true return** (dividend reinvested at the ex-day close —
+the provider convention):
+
+> r_t = (P_t/P_{t−1}) · 1/(1 − D_t/P_t) − 1 on ex-dates; else P_t/P_{t−1} − 1
+
+Write `adjust(raw, splits, divs)` → adjusted series. Unit test:
+adjusted returns == true returns to 1e−12.
+
+```python
+# YOUR CODE
+```
+
+## E2 (L4) — The reverse-split trap
+
+Add a 1:5 reverse split at day 260 (ratio = 1/5). Does your algorithm
+handle it with NO special case? What does raw do that day, and what
+does the holder experience?
+
+```python
+# YOUR CODE
+```
+
+## E3 (L5) — The audit pair (production checks)
+
+(a) Split integrity: raw's split-day return ≈ 1/ratio − 1 — but with
+1.5% daily noise, find the EXACT identity (hint: relate 1+r_raw,
+1+r_adj and the ratio). (b) Dividend integrity: every ex-date's
+ADJ−RAW return gap ≈ D/raw_ex. Implement both as boolean series;
+all-True on your world. Mind WHICH day's return the event lives in.
+
+```python
+# YOUR CODE
+```
+
+## E4 (L3, online) — vs the provider
+
+Online: AAPL (or any payer) — your `adjust()` vs `adj_close`: constant
+ratio (returns corr = 1.0000)? Then shift ONE dividend's date by one
+day and measure the ratio drift (sensitivity, felt).
+
+```python
+# YOUR CODE
+```
+
+## Hints
+
+- E1: process events NEWEST to OLDEST; each event edits only the
+  past: splits `factor[:t] /= ratio`; dividends
+  `factor[:t] *= (1 − D/raw[t])` (raw[t] = ex-day as-traded price —
+  dividends are per CURRENT share; the ground truth must use the
+  same price or the unit test fails at ~1e−2, not 1e−16).
+- E2: a reverse split is a split with ratio < 1 — if your code needs
+  a special case, the data model is wrong, not the event.

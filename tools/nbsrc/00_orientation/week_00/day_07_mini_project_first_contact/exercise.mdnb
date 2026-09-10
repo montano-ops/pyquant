@@ -1,0 +1,136 @@
+# Day 7 — Mini-Project: First Contact (your workspace)
+
+Work top to bottom. Write your answers in the marked markdown cells *before*
+opening `solution.ipynb`. Your numbers will differ from the solution's if
+your sample differs — defend yours.
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+
+plt.rcParams["figure.figsize"] = (10, 4)
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    px = get_prices(["SPY", "QQQ", "GLD"], start="2010-01-01")
+else:
+    px = synthetic_prices(n_days=3000, n_assets=3, seed=30)
+    px.columns = ["SPY", "QQQ", "GLD"]
+
+rets = px.pct_change().dropna()
+print(f"{len(rets)} days: {rets.index[0].date()} → {rets.index[-1].date()}")
+```
+
+## Computation section
+
+**C1.** Daily simple returns (done above). Annualized volatility per asset.
+
+```python
+# YOUR CODE
+```
+
+**C2.** Growth of $1 per asset, plotted.
+
+```python
+# YOUR CODE
+```
+
+**C3.** Maximum drawdown per asset, with the worst drawdown dates.
+
+```python
+# YOUR CODE — remember: growth / growth.cummax() - 1, then .min()
+```
+
+**C4.** 63-day rolling annualized volatility, plotted per asset.
+
+```python
+# YOUR CODE
+```
+
+**C5.** Return correlation matrix (all days), plus the SPY–QQQ and SPY–GLD
+correlations computed only on SPY's 20 worst days.
+
+```python
+# YOUR CODE
+```
+
+## Answers section (write before opening the solution)
+
+**Q1 — Ranking.** Highest return? Highest vol? Worst drawdown? Is "highest
+return" the same as "best investment"? Why not?
+
+```python
+# Your answer:
+```
+
+**Q2 — Signal vs noise.** SPY's average daily return vs its daily std: what
+ratio? What does it imply about judging strategies on months of data?
+
+```python
+# Your answer:
+```
+
+**Q3 — Symmetry.** Count days above/below the mean; compare the largest gain
+vs largest loss. What asymmetry do you see? (Term comes in module 03.)
+
+```python
+# Your answer:
+```
+
+**Q4 — Volatility over time.** Is vol constant? Does it cluster? What would
+"constant volatility" as an assumption imply, and where does it look wrong?
+
+```python
+# Your answer:
+```
+
+**Q5 — Correlation.** Most correlated pair? What happens to correlations on
+SPY's worst 20 days, and what does that imply for diversification when it
+matters most?
+
+```python
+# Your answer:
+```
+
+## Bias audit lite (mandatory)
+
+- sample period: how could your choice of 2010→now bias Q1's ranking?
+- universe: what is *missing* from a famous-ETF universe, and which
+  direction does that push returns?
+- costs: you ignored them — for which of your three assets would that be
+  most dangerous, and why (think turnover, not asset class)?
+
+```python
+# Your audit:
+```
+
+## Reflection (the four standard questions)
+
+```python
+# 1. What did I learn?
+# 2. What assumption does this method make?
+# 3. How could this analysis mislead me?
+# 4. What would I test next?
+```
+
+## Hints (ordered)
+
+- C3: `growth.cummax()` is the running maximum *up to each date* — the peak
+  you could have bought before each subsequent trough.
+- Q5: index into the correlation with boolean masks on SPY's return.
+- Bias audit: "ETFs that exist today and are famous" is itself a selection.

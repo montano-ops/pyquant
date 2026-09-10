@@ -1,0 +1,179 @@
+# Day 5 — Solution: Manufacturing Alpha from Noise
+
+## Setup + honest backtester
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+
+plt.rcParams["figure.figsize"] = (10, 4)
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    px = get_prices("SPY", start="2005-01-01")
+else:
+    px = synthetic_prices(n_days=3500, n_assets=1, seed=13)
+    px.columns = ["SPY"]
+rets = px["SPY"].pct_change().dropna()
+
+def backtest(signal, rets):
+    """Signal decided at close t earns day t+1's return. shift(1) enforces it."""
+    positions = signal.shift(1).fillna(0.0)
+    return positions * rets
+
+def sharpe(pnl, ann=252):
+    return pnl.mean() / pnl.std() * np.sqrt(ann)
+```
+
+**Expected reasoning for §0 (the prediction).** Most people predict a best-of-200
+Sharpe around 0.2–0.4. The honest calculation: each noise strategy's
+in-sample Sharpe is a draw from (approximately) a bell curve centered at 0;
+the *maximum of 200 draws* sits ~2.7 standard deviations out. Because the
+signals are persistent (changing ~weekly), the effective sample is smaller
+and the noise is wider — so the champion lands around Sharpe **1.0–1.6
+in-sample**. If your prediction was far below that, you now know why: your
+intuition underestimates the maximum of many noisy draws. That intuition gap
+is exactly what makes mined backtests sellable.
+
+## The experiment
+
+```python
+rng = np.random.default_rng(42)
+
+def random_signal(rng, index):
+    noise = pd.Series(rng.standard_normal(len(index)), index=index)
+    return np.sign(noise.rolling(5).mean()).fillna(0.0)
+
+def run_mining(n_trials, seed=42):
+    rng = np.random.default_rng(seed)
+    is_edge = int(len(rets) * 0.7)
+    records, signals = [], {}
+    for t in range(n_trials):
+        signal = random_signal(rng, rets.index)
+        pnl = backtest(signal, rets)
+        signals[t] = signal
+        records.append({"trial": t,
+                        "sharpe_is": sharpe(pnl.iloc[:is_edge]),
+                        "sharpe_oos": sharpe(pnl.iloc[is_edge:])})
+    return pd.DataFrame(records).set_index("trial"), signals, is_edge
+
+df, signals, is_edge = run_mining(200)
+print(df.describe().round(3))
+```
+
+**Q1 — expected numbers** (your exact values depend on sample and seed):
+
+```python
+print(f"best IS Sharpe of 200: {df.sharpe_is.max():.2f}")
+print(f"trials with IS Sharpe > 0.75: {(df.sharpe_is > 0.75).sum()}")
+print(f"corr(IS, OOS) across trials: {df.sharpe_is.corr(df.sharpe_oos):.3f}")
+```
+
+- Best IS Sharpe: typically **1.0–1.6** — from *pure noise*.
+- IS–OOS correlation across trials: **≈ 0** (maybe slightly negative). If
+  edges were real, in-sample performance would predict out-of-sample
+  performance — that's what an "edge" means. Here, knowing a trial's IS
+  Sharpe tells you nothing about its OOS Sharpe. That zero correlation is
+  the fingerprint of luck.
+
+## The champion
+
+```python
+best_trial = df.sharpe_is.idxmax()
+champ = df.loc[best_trial]
+print(f"champion trial {best_trial}: IS Sharpe {champ.sharpe_is:.2f}, OOS Sharpe {champ.sharpe_oos:.2f}")
+
+champ_pnl = backtest(signals[best_trial], rets)
+cum = (1 + champ_pnl).cumprod()
+split_date = rets.index[is_edge]
+
+fig, ax = plt.subplots(1, 2, figsize=(12, 4))
+ax[0].plot(cum.index, cum)
+ax[0].axvline(split_date, color="black", linestyle="--")
+ax[0].set_title("Champion: cumulative growth (left of dashed line = in-sample)")
+df.sharpe_is.hist(bins=30, ax=ax[1])
+ax[1].axvline(champ.sharpe_is, color="red", linestyle="--")
+ax[1].set_title("IS Sharpe of all 200 noise strategies")
+plt.tight_layout(); plt.show()
+```
+
+**Q2 — the mechanism (the sentence to remember).** Each of the 200
+strategies has a true edge of exactly zero, so each in-sample Sharpe is a
+noisy draw around zero; *selecting the maximum* keeps the luckiest draw —
+the search itself, not the market, manufactured the performance. The
+champion's OOS Sharpe is a fresh draw from the same zero-centered
+distribution: typically between −0.5 and +0.5, i.e., indistinguishable from
+any other noise strategy. Nothing "broke" out of sample — nothing was ever
+there.
+
+## Escalation to 2000 trials
+
+```python
+df2, signals2, _ = run_mining(2000)
+best2 = df2.loc[df2.sharpe_is.idxmax()]
+print(f"best of 2000: IS {best2.sharpe_is:.2f} -> OOS {best2.sharpe_oos:.2f}")
+over_15 = df2.index[df2.sharpe_is > 1.5]
+print(f"first trial with IS Sharpe > 1.5: #{over_15.min() if len(over_15) else 'none'} "
+      f"({len(over_15)} of 2000 trials exceed 1.5)")
+```
+
+With 2000 trials the maximum is higher (more draws → deeper into the tail):
+IS Sharpes of 1.5–2.0 appear, each with a beautiful story-shaped equity
+curve, each worthless. Show your boss only trial #k (the first >1.5) and
+they see a hedge-fund-grade strategy; the truth is you mined 2,000 coin
+flips and kept the shiniest. **This is what unreported search does to every
+backtest — and why your research log records every trial.**
+
+## The look-ahead specimen
+
+```python
+buggy_pnl = rets.rolling(5).mean() * rets
+fixed_pnl = rets.rolling(5).mean().shift(1) * rets
+print(f"buggy Sharpe: {sharpe(buggy_pnl):.2f}")
+print(f"fixed Sharpe: {sharpe(fixed_pnl):.2f}")
+```
+
+The buggy version correlates the 5-day mean *including today's return* with
+today's return — mechanically positive correlation between signal and P&L
+that no trader could have captured (you'd need to trade before the close
+that generates your signal). The fixed version earns t+1's return with a
+signal from t. The gap between the two Sharpes — often an order of
+magnitude — is a fair preview of how large look-ahead inflation can be.
+
+## §5 — reflection exemplar (yours should be in your own words)
+
+(a) Internet backtests are usually the max of an unreported search; the
+absence of the trial count is the tell. (b) Published papers face the same
+incentive — hundreds of published "factors" and a multiple-testing
+literature (module 13) exist because peer review rarely sees the search
+either. (c) Therefore my process must: fix hypotheses in advance
+(pre-registration), log every trial, split data before exploring, and treat
+any post-hoc discovery as hypothesis-generating, not evidence. If a result
+isn't still alive on data that postdates my last decision, it isn't a
+result.
+
+## Common mistakes
+
+- "The champion overfit" — imprecise. The *strategy* is noise; the
+  *selection* overfits. Fixing the blame correctly tells you what to change:
+  report and correct for the number of trials (module 13's deflated Sharpe
+  does exactly this).
+- Believing one clean holdout validates the champion: the champion was
+  *chosen* on IS; its OOS draw is just one more zero-mean draw. To *detect*
+  selection you need the trial count, not another split.
+- Concluding "backtests are useless". The correct conclusion: a backtest is
+  a measurement conditioned on an honest search. Today you measured the
+  search.

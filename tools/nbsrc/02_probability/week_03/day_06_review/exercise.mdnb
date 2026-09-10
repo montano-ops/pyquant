@@ -1,0 +1,38 @@
+# Day 6 — Exercise: Week-3 Cold Spot-Check
+
+From memory, then verify in code.
+
+## 1. The rules
+
+Write the union rule and the conditional formula; then verify numerically
+on simulated data that both hold.
+
+```python
+import numpy as np
+rng = np.random.default_rng(0)
+# YOUR CODE
+```
+
+## 2. Bayes, cold
+
+Prior 4%, hit 80%, false alarm 10% — posterior? Commit before computing.
+
+```python
+# my committed answer:
+# verification:
+```
+
+## 3. The decomposition
+
+p=0.54, W=0.8%, L=1.0% — expectancy? What must any decomposition of the
+same data reproduce?
+
+```python
+# my committed answer:
+# verification:
+```
+
+## 4. Error-log triage (outside the notebook)
+
+Anything from days 1–5 unresolved → list it now; it becomes input to
+tomorrow's simulator design.

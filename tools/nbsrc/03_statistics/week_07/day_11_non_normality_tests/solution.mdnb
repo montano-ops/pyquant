@@ -1,0 +1,123 @@
+# Day 11 — Solution: Non-Normality, Quantified
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+from scipy import stats
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    px = get_prices("SPY", start="1993-01-01")
+else:
+    px = synthetic_prices(n_days=8000, n_assets=1, seed=40)
+    px.columns = ["SPY"]
+r = px["SPY"].pct_change().dropna()
+```
+
+## E1 — JB by hand and by scipy
+
+```python
+n = len(r)
+z = (r - r.mean()) / r.std()
+sk, ku = z.skew(), (z**4).mean() - 3
+jb_hand = n * (sk**2 / 6 + ku**2 / 24)
+jb_sp, p_sp = stats.jarque_bera(r)
+print(f"hand: JB = {jb_hand:,.0f} | scipy: JB = {jb_sp:,.0f}, p = {p_sp:.2e}")
+print(f"effect sizes: skew {sk:+.2f}±{np.sqrt(6/n):.2f}, kurt {ku:.1f}±{np.sqrt(24/n):.1f}")
+```
+
+**Expected reasoning.** Hand and scipy agree to rounding (scipy uses
+full-sample moments; our excess-kurtosis convention reconciles — the
+formula is the same object). JB in the thousands on real SPY vs χ²(2)
+critical 5.99/9.2: the p-value is not "small", it is ~0 to dozens of
+digits. **The test answered a question nobody asked ("exactly
+normal?") with comic certainty; the effect sizes answer the real
+question (how far from normal, where, does it matter).**
+
+## E2 — the pathology, manufactured
+
+```python
+rng = np.random.default_rng(11)
+def mix(n):
+    x = rng.standard_normal(n)
+    cont = rng.random(n) < 0.001
+    x[cont] = rng.normal(0, 4, cont.sum())
+    return x
+# mixture kurtosis: E[z4] = 0.999*3*1 + 0.001*3*4^4 ≈ 2.997 + 0.768 = 3.765 -> excess ≈ 0.77
+for n in [100, 1000, 10000]:
+    rej = 0
+    for _ in range(1000):
+        x = mix(n)
+        z = (x - x.mean())/x.std()
+        jb = n * (pd.Series(z).skew()**2/6 + ((z**4).mean()-3)**2/24)
+        rej += jb > 5.99
+    print(f"n={n:6d}: rejection rate {rej/10:.0f}%  (mixture excess kurt ≈ 0.77 — 'trivial')")
+```
+
+**Expected sight.** Rejection: ~10–15% at n=100, ~60–80% at n=1,000,
+~99% at n=10,000 — power → 1 against an alternative (κ ≈ 0.8) that
+changes no risk decision at all. **"p < 0.01" at large n is a fact
+about n.** This is why day 3's rule exists: report κ̂ ± SE, and the
+consequence, and skip the p-value theater.
+
+## E3 — the mirror: small-n blindness
+
+```python
+rng = np.random.default_rng(12)
+for label, gen in [("t(5) parent", lambda n: rng.standard_t(5, n)/np.sqrt(5/3)),
+                   ("empirical SPY", lambda n: rng.choice(r.values, n))]:
+    rej = 0
+    for _ in range(1000):
+        x = gen(60)
+        z = (x - x.mean())/x.std()
+        jb = 60 * (pd.Series(z).skew()**2/6 + ((z**4).mean()-3)**2/24)
+        rej += jb > 5.99
+    print(f"{label}: n=60 rejection rate {rej/10:.0f}%")
+```
+
+**Expected reasoning.** t(5) (true κ=6!) and even empirical SPY
+(κ~12) reject at n=60 only ~30–55% of the time. **A monthly strategy
+with genuinely monstrous tails can pass JB at 5 years of data — the
+test is half-blind exactly where strategy evaluation lives.** Combined
+with E2: JB rejects trivia at large n, misses monsters at small n. It
+is close to useless at both ends of practical finance — which is why
+the QQ plot (no n-dependence in its *reading*) stays in the workflow.
+
+## E4 — the consequence sentence
+
+```python
+z = (r - r.mean())/r.std()
+obs = (abs(z) > 3).mean()
+model = 2*(1-stats.norm.cdf(3))
+print(f"|z|>3: observed {obs:.2%} vs normal {model:.2%} -> multiple {obs/model:.1f}x")
+```
+
+**The sentence (exemplar, real SPY):** "Observed |z|>3 days run at
+~1.5% vs the normal's 0.27% — a ~5× tail multiple. A 99% normal VaR of
+−2.4% is therefore breached roughly 5× more often than advertised:
+about every 20 days, not every 100. The desk's exception log should be
+expected to look 'broken' — it is the model, not the log."
+
+## E5 — where this mislead (exemplar)
+
+"Passes JB (p=0.21, monthly, n=84)" does NOT establish: (1) that the
+strategy's tails are safe — at n=84, SE(kurt) ≈ 0.53, the test can't
+see κ < 2; the pass is consistent with dangerous tails (E3); (2) that
+returns are normal in the *relevant* tail — a 1-in-100-month event
+will never appear in 84 months, and the VaR question lives exactly
+there; (3) that the future distribution matches the tested one — the
+84 months are one regime draw. What it does establish: the first four
+moments of this particular sample are not grossly inconsistent with a
+normal. That sentence buys almost nothing — which is the point of the
+exercise.

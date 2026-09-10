@@ -1,0 +1,134 @@
+# Day 18 — Solution: Monte Carlo & the Bootstrap
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+plt.rcParams["figure.figsize"] = (10, 4)
+import os
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+```
+
+## E1 — parallel histories
+
+```python
+rng = np.random.default_rng(30)
+paths = rng.normal(0.0004, 0.011, (5000, 252))
+sharpes = paths.mean(axis=1) / paths.std(axis=1) * np.sqrt(252)
+plt.hist(sharpes, bins=60); plt.show()
+print(f"realized Sharpe of a TRUE 0.6 process: mean {sharpes.mean():.2f}, "
+      f"SD {sharpes.std():.2f}, P(<0) = {(sharpes < 0).mean():.1%}")
+```
+
+Annual realized Sharpe has SD ≈ 1: **a true-Sharpe-0.6 strategy shows a
+negative calendar-year Sharpe roughly 25–30% of the time.** (The
+parametric μ,σ here give μ/σ·√252 ≈ 0.58.) This is the single most
+useful number in performance evaluation — more useful than any single
+backtest output.
+
+## E2 — the bootstrap mean
+
+```python
+if DATA_SOURCE == "real":
+    px = get_prices("SPY", start="2010-01-01")
+else:
+    px = synthetic_prices(n_days=3000, n_assets=1, seed=25)
+    px.columns = ["SPY"]
+r = px["SPY"].pct_change().dropna().values
+n = len(r)
+
+idx = rng.integers(0, n, (5000, n))
+boot_means = r[idx].mean(axis=1)
+lo, hi = np.percentile(boot_means, [2.5, 97.5])
+se_clt = r.std() / np.sqrt(n)
+print(f"bootstrap CI [{lo:.5f}, {hi:.5f}] width {hi-lo:.5f}")
+print(f"CLT width {2*1.96*se_clt:.5f}")
+```
+
+The percentile bootstrap CI and the CLT formula agree within a few
+percent — **and that agreement is itself the CLT working**: the
+bootstrap's resampling distribution of the mean is close to normal even
+though daily returns are fat-tailed, exactly as E1 of day 15 predicts.
+The bootstrap is not magic; it is the CLT with the empirical
+distribution standing in for the parent.
+
+## E3 — power and size, on known truth
+
+```python
+from qrc import synth
+
+def run_study(drift_spread, n_seeds=100):
+    hits = 0
+    for seed in range(n_seeds):
+        rets = synth.synthetic_returns(n_days=2500, n_assets=20,
+                                       drift_spread=drift_spread, seed=seed)
+        # signal: trailing 6-month mean return, known at day t's close
+        mom = rets.rolling(126).mean()                 # uses days t-125..t
+        # target: forward 21-day return, days t+1..t+21 (no lookahead)
+        fwd = rets.rolling(21).sum().shift(-21)
+        top = fwd.where(mom.rank(axis=1) > 10).mean(axis=1)
+        bot = fwd.where(mom.rank(axis=1) <= 10).mean(axis=1)
+        diff = (top - bot).dropna().iloc[::21]   # non-overlapping 21d windows!
+        hits += diff.mean() > 2 * diff.std() / np.sqrt(len(diff))
+    return hits / n_seeds
+
+print(f"size (null, spread=0): {run_study(0.0):.0%} of seeds 'detect' signal")
+print(f"power (spread=8bp):    {run_study(0.0008):.0%} of seeds detect it")
+```
+
+**Expected reasoning.** Null case: ~5–10% of seeds "detect" drift that
+isn't there — the false-alarm (size) rate; it should sit near the 2SE
+threshold's 5% design, and any excess is residual dependence you failed
+to remove (hence the non-overlapping sampling — overlapping forward
+windows inflate false alarms dramatically; try it and see). Real-signal
+case: detection lands far above the null rate but below 100% — genuine
+8bp/day cross-sectional drift is found in most worlds, not all.
+**You have just computed a strategy's size and power — the logic module
+13's deflated Sharpe and multiple-testing corrections formalize.** Any
+strategy you ever test should come with both numbers, computed on worlds
+where you control the truth.
+
+## E4 — what the plain bootstrap corrupts
+
+```python
+if DATA_SOURCE == "real":
+    px2 = get_prices("SPY", start="2005-01-01")["SPY"]
+else:
+    px2 = px["SPY"]
+r2 = px2.pct_change().dropna().values
+n = len(r2)
+
+def max_dd(seq):
+    wealth = np.cumprod(1 + seq)
+    return (1 - wealth / np.maximum.accumulate(wealth)).max()
+
+def block_bootstrap_idx(n, block_len, rng):
+    starts = rng.integers(0, n - block_len, n // block_len + 1)
+    return np.concatenate([np.arange(s, s + block_len) for s in starts])[:n]
+
+plain = np.array([max_dd(r2[rng.integers(0, n, n)]) for _ in range(500)])
+blocked = np.array([max_dd(r2[block_bootstrap_idx(n, 21, rng)]) for _ in range(500)])
+print(f"real max DD {max_dd(r2):.1%}")
+print(f"plain bootstrap: median {np.median(plain):.1%}, 95th {np.percentile(plain, 95):.1%}")
+print(f"block (21d):     median {np.median(blocked):.1%}, 95th {np.percentile(blocked, 95):.1%}")
+```
+
+**The plain bootstrap lies in both directions**: it destroys volatility
+clustering, so its drawdowns are too shallow in the median AND too
+narrow in the tail — the 95th percentile of plain-resampled max DD is
+dramatically below the true worst-case. Blocks restore the clustering;
+the block distribution is deeper and wider. **Never bootstrap a
+path-dependent statistic (drawdown, Sharpe of a trend-following rule)
+from iid resampling — day 19 generalizes this to "never shuffle time
+series, for anything."**

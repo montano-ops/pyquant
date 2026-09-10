@@ -1,0 +1,40 @@
+# Day 13 — Exercise: Week-4 Cold Spot-Check
+
+## 1. From memory
+
+(a) SE(ρ̂) under independence; (b) the SE(p̂) table rows 63/252/1260;
+(c) Var(X+Y) full form; (d) the empirical rule + real |z|>3 frequency;
+(e) days-to-t=2 formula.
+
+```python
+# (a)
+# (b)
+# (c)
+# (d)
+# (e)
+```
+
+## 2. Two computations
+
+(1) 60/50 portfolio: σ₁=18%, σ₂=11%, ρ=0.4 — vol? (2) A 252-day year
+shows 145 wins — z vs p=0.5, and the exact binomial p-value (one-sided).
+
+```python
+import numpy as np
+from scipy import stats
+# YOUR CODE
+```
+
+## 3. One simulation
+
+Reproduce the 63-day correlation-noise experiment from a blank cell (no
+peeking at day 8's code): SD of ρ̂ and P(|ρ̂|>0.25) across 2,000 draws.
+
+```python
+# YOUR CODE
+```
+
+## 4. Error-log triage (outside the notebook)
+
+Tomorrow's mini-project uses everything this week — list unresolved items
+now.

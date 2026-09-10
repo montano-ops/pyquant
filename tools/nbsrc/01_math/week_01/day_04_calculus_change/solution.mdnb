@@ -1,0 +1,103 @@
+# Day 4 — Solution: Change and Sensitivity
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    px = get_prices("SPY", start="2012-01-01")
+else:
+    px = synthetic_prices(n_days=2500, n_assets=1, seed=5); px.columns = ["SPY"]
+r = px["SPY"].pct_change().dropna()
+```
+
+## E1 — finite differences and their failure modes
+
+```python
+def deriv(f, x, h=1e-5):
+    return (f(x + h) - f(x)) / h
+
+checks = [
+    (lambda x: x ** 2, 3.0, 6.0),
+    (lambda x: np.log(1 + x), 0.0, 1.0),
+    (lambda x: 300 * (x - 62), 70.0, 300.0),
+]
+for f, x, exact in checks:
+    print(f"numeric {deriv(f, x):.8f} vs exact {exact}")
+
+hs = np.logspace(-16, 0, 50)
+errs = [abs(deriv(lambda x: x ** 2, 3.0, h) - 6.0) for h in hs]
+plt_err = None
+import matplotlib.pyplot as plt
+plt.loglog(hs, errs); plt.xlabel("h"); plt.ylabel("|error|"); plt.title("finite-difference error vs h")
+plt.show()
+```
+
+The error curve is V-shaped on a log-log plot: for large h it falls
+proportional to h (chord vs tangent); for tiny h it *rises* because
+f(x+h)−f(x) cancels in floating point. The minimum sits around h ≈ 1e-5–1e-8.
+**This is the number-one practical fact about numerical derivatives**, and
+module 15's Greeks live entirely on that V's sweet spot.
+
+## E2 — sensitivity of ending wealth
+
+```python
+def final_wealth(path):
+    return float(np.prod(1 + path))
+
+h = 1e-6
+sens = {}
+for k, label in [(0, "first day"), (len(r) - 1, "last day")]:
+    pert = r.copy(); pert.iloc[k] += h
+    sens[label] = (final_wealth(pert) - final_wealth(r)) / h
+print(sens)
+```
+
+dW/dr_k = $\prod_{s>k}(1+r_s)$ — the growth of everything *after* day k.
+So the first day's bump compounds through the entire path (huge
+sensitivity), while the last day's sensitivity is just the final wealth
+level. **Reading:** an edge applied early is worth more than the same edge
+late — and "a basis point today is worth a basis point on the whole
+compounded future."
+
+## E3 — the sensitivity zoo
+
+| Quantity | d(value)/d(driver) | Sign convention |
+|---|---|---|
+| delta | option value / spot | + for calls, − for puts |
+| duration | bond price / yield (negative) | prices fall as rates rise |
+| beta | asset return / market return | + = pro-cyclical exposure |
+| gradient | objective / each parameter | points uphill |
+| marginal P&L | P&L / weight | + = add exposure |
+
+Duration 6.2 in plain English: "if rates rise by 1 percentage point, the
+fund's value falls by roughly 6.2%" — a slope stated as a percentage per
+percentage point.
+
+## E4 — convexity, felt
+
+```python
+print(0.8 * 1.25, 1.25 * 0.8)              # 1.0 1.0
+print(0.8 * 1.2, 1.2 * 0.8)                # 0.96 0.96
+print(0.67 * 1.49, 0.9 * 1.1)              # ~0.998, 0.99
+print((0.8 * 1.25 + 1.25 * 0.8) / 2)
+```
+
+−20%/+25% returns exactly to par (a *fair* retrace); −20%/+20% ends at 0.96
+— a 4% loss from "symmetric" moves. The average over orders is still ≤ 1:
+multiplication is convex in the growth factor, so symmetric percentage
+moves lose money on average. **Leveraged ETFs rebalance daily, forcing you
+into this bet every single day** — their long-run decay is not a scam, it's
+compounded convexity (module 15's variance drag, mechanized).

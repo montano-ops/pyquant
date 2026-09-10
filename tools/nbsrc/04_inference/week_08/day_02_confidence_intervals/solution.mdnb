@@ -1,0 +1,98 @@
+# Day 2 — Solution: Confidence Intervals
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+from scipy import stats
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    r = get_prices("SPY", start="2010-01-01")["SPY"].pct_change().dropna()
+else:
+    r = synthetic_prices(n_days=4000, n_assets=1, seed=45)["S0"].pct_change().dropna()
+```
+
+## E1 — coverage, seen
+
+```python
+rng = np.random.default_rng(0)
+def coverage(gen, n=252, reps=2000):
+    hit = 0
+    for _ in range(reps):
+        x = gen(n)
+        se = x.std(ddof=1)/np.sqrt(n)
+        hit += (x.mean()-1.96*se <= 0.0004 <= x.mean()+1.96*se)
+    return hit/reps
+mu, sd = 0.0004, 0.011
+print(f"normal parent: {coverage(lambda n: rng.normal(mu, sd, n)):.1%}")
+print(f"t(3) parent:   {coverage(lambda n: mu + sd/np.sqrt(3)*rng.standard_t(3, n)):.1%}")
+```
+
+**Expected reasoning.** Normal parent: ≈95% by construction. t(3)
+parent: still ≈94–95% at n=252 — the CLT has repaired the mean's
+sampling distribution by this size (02.15); the sag appears at n=30–60
+(rerun to see 92–94%). **Coverage failures of the mean's CI are a
+small-sample disease; the Sharpe CI (E3) is where fat tails bite even
+at large n, because the ratio's numerator and denominator are both
+tail-sensitive.**
+
+## E2 — the annualized mean CI
+
+```python
+n = len(r); se = r.std()/np.sqrt(n)
+lo, hi = r.mean() - 1.96*se, r.mean() + 1.96*se
+print(f"daily CI [{lo:.5%}, {hi:.5%}] -> linear-annualized [{lo*252:+.1%}, {hi*252:+.1%}]")
+
+rng = np.random.default_rng(1)
+# one bootstrap "year" = 252 resampled days, compounded
+ann = np.array([(np.prod(1 + r.values[rng.integers(0, len(r), 252)]) - 1) for _ in range(3000)])
+print(f"bootstrap typical year: [{np.percentile(ann, 2.5):+.1%}, {np.percentile(ann, 97.5):+.1%}]")
+```
+
+**Expected reasoning.** The bootstrap annual CI is strongly right-
+skewed (compounding + fat right tail): e.g., [−14%, +38%] vs the
+linear [−2%, +20%]. **The linear annualization of a symmetric CI
+produces a symmetric lie**: annual returns are multiplicative and
+skewed, so the honest CI is asymmetric — and much wider on the upside.
+(Note the two bootstrap lines compute different estimands — the mean
+across bootstrap years vs a single bootstrap year; the second (a
+typical year) is the one to report; keep the first only if you can
+say why it's the average-year CI.)
+
+## E3 — the Sharpe CI
+
+```python
+sr_d = r.mean()/r.std(); n = len(r)
+se_d = np.sqrt((1 + sr_d**2/2)/n)
+print(f"SR annual {sr_d*np.sqrt(252):.2f} ± {1.96*se_d*np.sqrt(252):.2f} (95% CI)")
+```
+
+**Expected Reasoning.** For a 10-year sample: SR̂ ≈ 0.8 ± 0.35 —
+respectable. The same strategy over 1 year: SE doubles (×√10) → ±1.1:
+**a one-year Sharpe of 0.8 is consistent with −0.3 and with 1.9.**
+The lesson lands twice: never compare strategies on one-year Sharpes
+(the CIs overlap almost surely), and treat any Sharpe from under ~5
+years as a rough sketch (module 12's MinTRL formalizes; day 7's lab
+simulates).
+
+## E4 — the midpoint budget (exemplar)
+
+Three problems: (1) **Asymmetry**: the compounded-return CI is
+right-skewed — the midpoint overstates the median outcome (budget the
+median, not the midpoint). (2) **Serial luck**: the 5-year CI is a
+sampling statement about a stationary world; the strategy's edge
+decays (03.9) — the forward CI is wider than the backward one.
+(3) **Selection**: the allocator sees this fund BECAUSE it's at 9.1%;
+the population of similar funds averages lower — regression to the
+mean drags the forward estimate toward it (02.17). Budget at the 25th
+percentile of the honest forward CI, and sleep.

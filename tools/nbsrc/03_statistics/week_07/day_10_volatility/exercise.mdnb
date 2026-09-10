@@ -1,0 +1,91 @@
+# Day 10 — Exercise: Volatility
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    px = get_prices("SPY", start="1993-01-01")
+else:
+    px = synthetic_prices(n_days=8000, n_assets=1, seed=39)
+    px.columns = ["SPY"]
+r = px["SPY"].pct_change().dropna()
+```
+
+## E1 (L4) — The EKG
+
+21d and 63d annualized rolling vol; full-sample line. Report the min/
+max/range multiple, and the three dates of local vol peaks. How many
+distinct "regimes" (visually) since 2005?
+
+```python
+# YOUR CODE
+```
+
+## E2 (L3) — Annualization checked
+
+Per calendar year: close-close annualized vol (daily × √252) vs actual
+annual (sum of daily returns... no — the SD of the year's *daily*
+returns IS the estimate). Instead: compare √252×σ_daily vs the SD of
+non-overlapping annual returns — small n, but the point is the
+conceptual gap. Which years break the translation worst, and why
+(autocorrelation? non-stationarity)?
+
+```python
+# YOUR CODE
+```
+
+## E3 (L4) — EWMA vs rolling
+
+EWMA λ=0.94 vs 21d rolling: plot; compute their correlation; find the
+3 dates where they disagree most and explain the mechanism (fast
+reaction vs slow forgetting).
+
+```python
+# YOUR CODE
+```
+
+## E4 (L5) — Vol forecasting league (one day ahead)
+
+Naive league: forecast tomorrow's |r| with (a) full-sample σ; (b)
+yesterday's 21d vol; (c) EWMA(0.94). Score by MSE on squared returns
+over the last 10 years. Rank. What does the ranking tell you about
+vol persistence?
+
+```python
+# YOUR CODE
+```
+
+## E5 (L7) — Where could this mislead?
+
+"We target 10% annualized vol, scaling daily." A 3× vol spike lasts 2
+months. Walk through what vol targeting DID during the spike (positions
+cut by ~2/3) and what it did to the recovery (slow to re-enter: EWMA/
+rolling memory). One paragraph — the strategy's real risk is what?
+
+```python
+# Your answer:
+```
+
+## Hints
+
+- E4: MSE on r² (the variance target); forecast = σ̂²; the winner is
+  usually EWMA by a modest margin — persistence pays, reaction speed
+  pays more.
+- E5: the real risk isn't the spike (you de-levered correctly); it's
+  the whipsaw/missing the V-recovery with lagged estimates.

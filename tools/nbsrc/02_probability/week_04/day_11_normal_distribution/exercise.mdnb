@@ -1,0 +1,82 @@
+# Day 11 — Exercise: The Normal Distribution
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import scipy.stats as st
+plt.rcParams["figure.figsize"] = (10, 4)
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+```
+
+## E1 (L3) — z-scores and tail probabilities
+
+For a normal model of SPY daily returns (μ, σ from 2010→ data or
+synthetic): P(r < −2%), the z of a −3% day, the return at the 1-in-100
+left tail. Then: how many days until the model expects ONE |z|>4 day?
+
+```python
+# YOUR CODE
+```
+
+## E2 (L4) — Build the QQ plot
+
+Plot sorted real z-scores (x) vs the matching standard-normal quantiles
+(y): `st.norm.ppf((np.arange(n)+0.5)/n)`. Add the 45° line. Interpret the
+shape of the deviations at both ends. (This exact plot returns in module
+03 with full ceremony.)
+
+```python
+# YOUR CODE
+```
+
+## E3 (L5) — The tail count, real vs model
+
+On your data: observed share of |z|>3 and |z|>4 days vs the normal model's
+0.27% / 0.006%. Compute the *ratio* (the "tail multiple"). What does a
+5–10× tail multiple do to a 99% VaR estimate?
+
+```python
+# YOUR CODE
+```
+
+## E4 (L6) — 1987, computed
+
+The empirical rule says ±3σ covers 99.7%. Oct 19, 1987: −20.5% in a day
+when σ(daily) ≈ 1%. Compute its z, then P(z that extreme) and its "once
+in N years" frequency under normality. One paragraph: what did that day
+prove about normal-model risk management?
+
+```python
+# YOUR CODE + answer:
+```
+
+## E5 (L7) — Where could this mislead?
+
+A colleague sizes positions so that daily losses beyond 3σ trigger margin
+calls, "because 3σ is 99.7% safe". Give the two-part correction (tails are
+fatter; σ̂ itself wobbles and clusters).
+
+```python
+# Your answer:
+```
+
+## Hints
+
+- E2: if the points curl away from the line at the ends (steeper than 45°),
+  the data has fatter tails than normal — left end below, right end above.
+- E4: z ≈ −20; P ≈ 10⁻⁸⁹; at 252 days/year that's once in ~10⁸⁶ years —
+  i.e., "impossible", i.e., the model is wrong.

@@ -1,0 +1,146 @@
+# Day 19 — Solution: Why You Can't Shuffle Time Series
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+plt.rcParams["figure.figsize"] = (10, 4)
+import os
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    px = get_prices("SPY", start="2010-01-01")
+else:
+    px = synthetic_prices(n_days=3000, n_assets=1, seed=26)
+    px.columns = ["SPY"]
+r = px["SPY"].pct_change().dropna()
+```
+
+## E1 — the shuffle, felt
+
+```python
+shuf = r.sample(frac=1.0, random_state=1)   # same values, order destroyed
+shuf.index = r.index
+
+def max_dd(s):
+    w = (1 + s).cumprod()
+    return (1 - w / w.cummax()).max()
+
+def worst21(s):
+    return s.rolling(21).sum().min()
+
+rows = []
+for name, s in [("real", r), ("shuffled", shuf)]:
+    rows.append([name, max_dd(s), abs(s).autocorr(1), abs(s).autocorr(5), worst21(s)])
+print(pd.DataFrame(rows, columns=["series", "maxDD", "|r| acf(1)", "|r| acf(5)",
+                                  "worst 21d"]).to_string(index=False))
+```
+
+**Preserved:** the full distribution of daily returns — mean, σ, every
+moment, the histogram is *identical*. **Destroyed:** the ordering —
+volatility clustering (|r| autocorrelation collapses to ≈ 0), and
+therefore every path statistic: the shuffled max drawdown is shallower,
+the worst 21-day stretch is far milder, and crash sequences like
+"bad day after bad day" vanish. **A shuffled market has the same
+photograph but a different movie.** Any test whose null is built by
+shuffling tests a world with no clustering — a null markets do not
+inhabit.
+
+## E2 — n_eff, measured
+
+```python
+def n_eff(series, max_lag=20):
+    n = len(series)
+    acf = np.array([series.autocorr(k) for k in range(1, max_lag + 1)])
+    return n / (1 + 2 * acf.sum()), acf
+
+ne_r, _ = n_eff(r)
+ne_r2, acf2 = n_eff(r ** 2)
+print(f"returns: n_eff/n = {ne_r/len(r):.2f}")
+print(f"r²:      n_eff/n = {ne_r2/len(r):.2f} (acf(1)={acf2[0]:.2f})")
+```
+
+**Expected reasoning.** Returns: ρ at lags 1–20 ≈ 0 → n_eff/n ≈ 0.9–1.0
+— the *mean's* uncertainty is nearly what iid math says (lucky!). r²:
+lag-1 autocorrelation ≈ 0.2–0.35 with slow decay → n_eff/n ≈ 0.3–0.6 —
+the *variance's* (and everything built on it: Sharpe, t-stats, VaR)
+uncertainty is understated by a factor of ~2–3 by iid formulas.
+**Volatility clustering doesn't bias your vol estimate; it makes your
+error bars on it lies.**
+
+## E3 — a correct placebo
+
+```python
+rng = np.random.default_rng(13)
+mom = r.rolling(5).mean().shift(1).reindex(r.index)        # signal known at t
+fwd1 = r                                                # next-day return
+strat_ret = (mom * fwd1).dropna()                         # sign-times-magnitude
+real_mean = strat_ret.mean()
+
+placebo = []
+for _ in range(500):
+    k = rng.integers(30, len(mom) - 30)                  # random circular offset
+    shifted = pd.Series(np.roll(mom.values, k), index=mom.index)
+    placebo.append((shifted * fwd1).dropna().mean())
+placebo = np.array(placebo)
+print(f"real {real_mean:+.5f} vs placebo mean {placebo.mean():+.5f} "
+      f"sd {placebo.std():.5f}")
+print(f"placebo z of real: {(real_mean - placebo.mean())/placebo.std():+.2f}")
+```
+
+**Why this works:** `np.roll` preserves the signal's own autocorrelation
+(and its overlap with the vol regime), destroying only its *alignment*
+with future returns. The placebo distribution is the honest null — same
+signal shape, same return series, random timing. Real strategies should
+land in the placebo's far right tail; if they land in its middle, the
+"edge" was timing-luck with a shape. (The offset must exceed the
+signal's memory: ≥ 30 days here.) **This one construction survives into
+module 13 as your go-to significance test.**
+
+## E4 — block length
+
+```python
+n = len(r)
+def block_idx(n, L, rng):
+    starts = rng.integers(0, n - L, n // L + 1)
+    return np.concatenate([np.arange(s, s + L) for s in starts])[:n]
+
+def max_dd(seq):
+    w = np.cumprod(1 + seq)
+    return (1 - w / np.maximum.accumulate(w)).max()
+
+for L in [5, 21, 63]:
+    dds = [max_dd(r.values[block_idx(n, L, rng)]) for _ in range(400)]
+    print(f"block {L:2d}d: median maxDD {np.median(dds):.1%}, "
+          f"95th {np.percentile(dds, 95):.1%}")
+```
+
+As L grows 5→21→63, drawdown distributions deepen and widen, then
+**plateau** once blocks exceed the dependence horizon (vol regimes last
+weeks-to-months; beyond ~63 days, longer blocks add little). The plateau
+location IS an estimate of the memory length — a diagnostic and a
+design choice in one plot.
+
+## E5 — where this mislead (exemplar)
+
+The shuffled placebo destroys volatility clustering, so the null
+strategy's P&L is *smoother* than any real strategy's — the real
+strategy's drawdown-like excursions (which come from clustered vol, not
+from the signal) count as "impossible under the null", inflating
+significance. The p < 0.01 is an artifact of comparing a path-dependent
+statistic against a path-independent null. **Correct placebo:** preserve
+the return series exactly and randomize only alignment (E3's circular
+shift), or resample with blocks (E4) — either way the null carries the
+market's own dependence structure, so the test isolates the signal, not
+the market.

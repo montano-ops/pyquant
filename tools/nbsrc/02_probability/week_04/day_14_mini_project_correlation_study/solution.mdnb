@@ -1,0 +1,127 @@
+# Day 14 — Solution: The Correlation Study (exemplar)
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+plt.rcParams["figure.figsize"] = (10, 4)
+import os
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+from qrc.universe import load_universe
+
+if DATA_SOURCE == "real":
+    tickers = load_universe("core_etfs")
+    px = get_prices(tickers, start="2006-01-01")
+else:
+    tickers = [f"S{i}" for i in range(10)]
+    px = synthetic_prices(n_days=3000, n_assets=10, seed=77, corr=0.3)
+    px.columns = tickers
+r = px.pct_change().dropna()
+```
+
+## Part 1 — the headline matrix, honestly
+
+```python
+T = len(r)
+C = r.corr()
+print(C.round(2).to_string())
+
+pairs = []
+for i in range(len(tickers)):
+    for j in range(i + 1, len(tickers)):
+        rho = C.iloc[i, j]
+        se = (1 - rho ** 2) / np.sqrt(T)
+        pairs.append((tickers[i], tickers[j], rho, se, abs(rho) > 2 * se))
+sig = sum(p[4] for p in pairs)
+print(f"\nT={T}, {len(pairs)} pairs; |ρ̂|>2SE: {sig} "
+      f"(luck would deliver ~5% of {len(pairs)} ≈ {0.05*len(pairs):.1f})")
+```
+
+**Expected reasoning.** With T ≈ 3,000–4,800 days, SE(ρ̂) ≈ 0.015 — most
+real ETF pairs are resolvably correlated (equity sectors ρ ≈ 0.7–0.9;
+bonds/gold vs equities lower). The multiplicity point lands differently
+than students expect: at long T the null band is tiny, so "significant"
+is easy — **the audit's real job at long T is not "is it zero" but "how
+many pairs did we search, and is any single extreme ρ̂ surprising given
+the search?"** Expected luck-hits at 2SE = 5% of pairs; far *more* hits
+than that reflects genuine common-factor structure (which is itself the
+finding).
+
+## Part 2 — the rolling window
+
+```python
+def roll_stats(a, b):
+    x = r[a].rolling(252).corr(r[b]).dropna()
+    return x
+
+hi_pair = max(pairs, key=lambda p: p[2])[:2]
+lo_pair = min(pairs, key=lambda p: p[2])[:2]
+for a, b in [hi_pair, lo_pair]:
+    x = roll_stats(a, b)
+    full = r[a].corr(r[b])
+    print(f"{a}-{b}: full {full:+.2f} | rolling [{x.min():+.2f}, {x.max():+.2f}] "
+          f"| sign differs {np.mean(np.sign(x) != np.sign(full)):.0%}")
+```
+
+Real markets: even the "stable" high-ρ pair (e.g., SPY–QQQ) breathes
+±0.1; diversifying pairs swing across zero for whole years. A
+correlation *range*, not a correlation, is the reportable object.
+
+## Part 3 — the stress test
+
+```python
+mkt = r["SPY"] if "SPY" in r.columns else r.iloc[:, 0]
+thresh = mkt.quantile(0.10)
+stress = r[mkt <= thresh]
+
+def avg_pair_corr(df):
+    C = df.corr().values
+    iu = np.triu_indices_from(C, k=1)
+    return C[iu].mean()
+
+vol21 = r.rolling(21).std().dropna()
+vstress = vol21[mkt.reindex(vol21.index) <= thresh]
+
+print(f"avg pairwise corr: all {avg_pair_corr(r):+.2f} vs worst-decile {avg_pair_corr(stress):+.2f}")
+print(f"avg vol-of-vol corr on stress days: {avg_pair_corr(vstress):+.2f}")
+```
+
+**The exhibit that matters:** average pairwise correlation roughly
+doubles in the worst decile (e.g., +0.3 → +0.6 on real data), AND the
+*volatilities themselves* become correlated on the same days. On the
+worst days, assets don't just fall together — their risk moves together.
+**"Diversification fails when needed" is not a slogan; it's a measured
+conditional correlation.**
+
+## Part 4 — write-up (exemplar skeleton)
+
+- **Exhibit A** — full-sample matrix with per-pair SEs: which pairs are
+  solid, which are noise.
+- **Exhibit B** — rolling 252d ρ for the best/worst pairs: ranges and
+  sign-flips; first 251 days lost to the window (stated).
+- **Exhibit C** — stress-vs-calm average correlation (Part 3's two
+  numbers, plus the vol-corr).
+- **60/40 paragraph (exemplar):** "A 60/40 stock/bond portfolio's risk
+  is governed by the covariance term; our sample says ρ(SPY,TLT) ≈ −0.3
+  overall, but the rolling estimate spans −0.6 to +0.4, and in SPY's
+  worst decile the average cross-correlation roughly doubles. The
+  portfolio's realized risk in a stress window is therefore closer to
+  the undiversified case than the average-ρ calculation suggests.
+  Sizing on full-sample ρ is a bet that the next stress looks like the
+  average day."
+- **Bias audit:** single history (one path of many — day 15's parallel
+  worlds); survivorship (ETFs chosen in 2006 that still exist — dead
+  products excluded); multiplicity (45 pairs scanned, extremes
+  highlighted post hoc); window sensitivity (2006 start includes GFC;
+  re-run on 2010→ and compare).

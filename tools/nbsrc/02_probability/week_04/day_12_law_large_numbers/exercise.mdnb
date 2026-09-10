@@ -1,0 +1,74 @@
+# Day 12 — Exercise: The Law of Large Numbers
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+plt.rcParams["figure.figsize"] = (10, 4)
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+```
+
+## E1 (L4) — Watch convergence, thin and fat
+
+For a normal(0.0005, 0.011) process AND a t(3)-based process (scaled to
+similar σ), plot running means over 10,000 draws with ±SE bands (log x).
+Describe the qualitative difference in *how* they converge.
+
+```python
+rng = np.random.default_rng(11)
+# YOUR CODE
+```
+
+## E2 (L3) — Days-to-resolve arithmetic
+
+For (μ, σ) daily = (0.0005, 0.011), (0.001, 0.011), (0.0005, 0.022):
+compute n needed for the mean to clear 2 SEs: n = (2σ/μ)². In years?
+Which lever helps more: doubling the edge or halving the vol — and what
+does that say about strategy *selection* vs strategy *engineering*?
+
+```python
+# YOUR CODE + answer:
+```
+
+## E3 (L5) — Real data: the mean is barely resolved
+
+SPY daily returns (1990→ or your longest sample): compute r̄, s, SE, and
+the t-stat r̄/SE. How many days would be needed for t=2 at this μ,σ?
+Report the same for *volatility* — how many days until the vol estimate is
+within ±10% of truth (SE of σ ≈ σ/√(2n))? Write the contrast sentence.
+
+```python
+# YOUR CODE
+```
+
+## E4 (L7) — Dilution, not compensation
+
+Simulate 10,000 fair-coin 100-day paths. Show: after a 10-loss start,
+(a) the *remaining* average converges to 50% (no compensation), while
+(b) the *overall* average converges to 50% (dilution). Plot both for paths
+that started 0-for-10.
+
+```python
+# YOUR CODE
+```
+
+## Hints
+
+- E3: t = √n·μ/σ → n = (tσ/μ)². For σ: relative SE of s is ≈ 1/√(2n)
+  under normality → n ≈ 50 for ±10% (i.e., two months!). Vol is easy,
+  means are brutal.
+- E4: filter paths whose first 10 flips are losses; average their
+  per-flip statistics from day 11 onward vs from day 1.

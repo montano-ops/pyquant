@@ -1,0 +1,128 @@
+# Day 14 — Solution: The Portfolio Variance Laboratory (exemplar)
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+plt.rcParams["figure.figsize"] = (10, 4)
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+from qrc.universe import load_universe
+
+if DATA_SOURCE == "real":
+    tickers = load_universe("core_etfs")
+    px = get_prices(tickers, start="2010-01-01")
+else:
+    tickers = [f"S{i}" for i in range(12)]
+    px = synthetic_prices(n_days=3000, n_assets=12, seed=97, corr=0.4)
+    px.columns = tickers
+rets = px.pct_change().dropna()
+```
+
+## Part 1 — the diversification curve
+
+```python
+rng = np.random.default_rng(2024)
+ns = [n for n in [1, 2, 4, 6, 8, 10, 12] if n <= len(tickers)]
+
+def curve_for(rets_df, draws):
+    out = []
+    for n, subsets in draws.items():
+        vols = [np.sqrt(np.full(n, 1/n) @ rets_df.iloc[:, s].cov().values * 252
+                        @ np.full(n, 1/n)) for s in subsets]
+        out.append(np.mean(vols))
+    return pd.Series(out, index=[k for k in draws])
+
+draws = {n: [rng.choice(len(tickers), size=n, replace=False) for _ in range(50)] for n in ns}
+curve = curve_for(rets, draws)
+
+Sigma_ann = rets.cov().values * 252
+avg_var = np.mean(np.diag(Sigma_ann))
+avg_cov = (Sigma_ann.sum() - np.trace(Sigma_ann)) / (len(tickers) * (len(tickers) - 1))
+
+plt.plot(curve.index, curve.values, "o-", label="empirical")
+plt.plot(ns, np.sqrt(avg_var / np.array(ns)), "--", label="avg var / n")
+plt.axhline(np.sqrt(avg_cov), color="red", ls=":", label="avg cov floor")
+plt.xlabel("n"); plt.ylabel("ann. vol"); plt.legend(); plt.show()
+```
+
+**Reading:** vol collapses fast to n≈4-6, then crawls toward the
+average-covariance floor — by n=10-12 you retain only ~10-20% of the
+diversifiable benefit. "Just add more stocks" has sharply diminishing
+returns after the first handful.
+
+## Part 2 — the correlation regime
+
+```python
+avg_vol = rets.rolling(63).std().mean(axis=1)
+stormy = avg_vol > avg_vol.median()
+curve_calm = curve_for(rets[~stormy], draws)
+curve_storm = curve_for(rets[stormy], draws)
+
+plt.plot(curve_calm.index, curve_calm.values, "o-", label="calm half")
+plt.plot(curve_storm.index, curve_storm.values, "o-", label="stormy half")
+plt.axhline(np.sqrt(avg_cov), color="red", ls=":", label="full-sample floor")
+plt.xlabel("n"); plt.ylabel("ann. vol"); plt.legend(); plt.show()
+
+Sig_calm = rets[~stormy].cov().values * 252
+Sig_storm = rets[stormy].cov().values * 252
+cov_calm = (Sig_calm.sum() - np.trace(Sig_calm)) / (len(tickers)**2 - len(tickers))
+cov_storm = (Sig_storm.sum() - np.trace(Sig_storm)) / (len(tickers)**2 - len(tickers))
+print(f"avg cov: calm {np.sqrt(cov_calm):.2%} vs stormy {np.sqrt(cov_storm):.2%}")
+```
+
+**Reading:** the stormy curve sits far above the calm one, and — the key
+fact — the *floor* rises: average covariance is 2–4× higher in the stormy
+half. A portfolio sized to calm-period risk is dramatically under-risked
+exactly when losses arrive.
+
+## Part 3 — estimation noise vs perfect information
+
+```python
+half = len(rets) // 2
+A, B = rets.iloc[:half], rets.iloc[half:]
+n = len(tickers)
+SigB = B.cov().values * 252
+
+from scipy.optimize import minimize
+def min_var_df(df):
+    S = df.cov().values * 252
+    res = minimize(lambda w: w @ S @ w, np.full(n, 1/n),
+                   constraints=[{"type": "eq", "fun": lambda w: w.sum() - 1}],
+                   bounds=[(0, 1)] * n, method="SLSQP")
+    return res.x
+
+w_A, w_eq, w_cheat = min_var_df(A), np.full(n, 1/n), min_var_df(B)   # cheat = in-sample on B
+vol = lambda w: np.sqrt(w @ SigB @ w)
+print(f"w_A out-of-sample: {vol(w_A):.2%} | 1/N: {vol(w_eq):.2%} | cheat: {vol(w_cheat):.2%}")
+print(f"perfect-info gap: {vol(w_eq) - vol(w_cheat):+.2%} | estimation-error cost: {vol(w_eq) - vol(w_A):+.2%}")
+```
+
+**Reading (typical):** the perfect-information gap is modest (1-3 vol
+points); the A-weights capture little of it and sometimes go negative
+(underperform 1/N) — the optimizer amplified Σ_A's luck. One split proves
+nothing (multiplicity, regime, selection — module 13 will run this as a
+walk-forward distribution), but the mechanism is exactly what
+DeMiguel-Garlappi-Uppal documented at scale.
+
+## Bias audit (exemplar)
+
+- Survivorship: famous ETFs, all alive — own-vol estimates are for
+  *survivors*; dead instruments' worse risk profiles are absent. Bias
+  direction: vol/risk understated.
+- Stationarity: 2010→now Σ assumes covariance structure persists into the
+  future; Part 2 just showed it doesn't across regimes.
+- Multiplicity: ~350 subsets and 3 optimizations; the "cheat" number
+  demonstrated that in-sample optima are systematically flattering — which
+  is why every reported optimum in this course gets labeled in-sample or
+  out-of-sample, always.

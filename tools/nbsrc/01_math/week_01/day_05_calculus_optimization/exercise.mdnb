@@ -1,0 +1,105 @@
+# Day 5 — Exercise: Optimization & Least Squares
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from scipy.optimize import minimize
+plt.rcParams["figure.figsize"] = (10, 4)
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    px = get_prices(["SPY", "XLE"], start="2015-01-01")
+    y_name, x_name = "XLE", "SPY"
+else:
+    px = synthetic_prices(n_days=2000, n_assets=2, seed=23, corr=0.6)
+    px.columns = [y_name, x_name] = ["XLE", "SPY"]
+r = px.pct_change().dropna()
+```
+
+## E1 (L3) — SSE by hand, once
+
+For the line $\hat y = 0.0005 + 1.2x$ over the first 10 (x, y) pairs,
+compute SSE *with a loop* (the Σ made explicit).
+
+```python
+x = r[x_name].iloc[:10].values
+y = r[y_name].iloc[:10].values
+a, b = 0.0005, 1.2
+# sse = ... (loop)
+```
+
+## E2 (L4) — Minimize it
+
+Minimize SSE over (a, b) with `scipy.optimize.minimize`, starting from
+(0, 1). Report (â, b̂), `res.success`, and the minimized SSE. Then restart
+from (−0.01, 3) and (0.002, 0). Same answer? Why (what shape is the
+surface)?
+
+```python
+def sse(theta):
+    a, b = theta
+    # YOUR CODE
+    ...
+
+# res = minimize(sse, x0=[0.0, 1.0]) ...
+```
+
+## E3 (L5) — Your first market model
+
+Fit $R_{XLE,t} = a + b\,R_{SPY,t} + e_t$ on the full sample by minimizing
+SSE. Report â (daily alpha), b̂ (beta). Then compare against
+`statsmodels`:
+
+```python
+import statsmodels.api as sm
+X = sm.add_constant(r[x_name])
+print(sm.OLS(r[y_name], X).fit().params)
+```
+
+Do your numbers match? (They must — explain what statsmodels did
+differently, if anything.)
+
+```python
+# YOUR CODE + answer:
+```
+
+## E4 (L5) — Plot the fit
+
+Scatter SPY vs XLE daily returns (alpha-blended), your fitted line, and the
+residuals vs x in a second panel. What do residuals ⊥ x look like visually?
+
+```python
+# YOUR CODE
+```
+
+## E5 (L7) — Outlier sensitivity of squares
+
+Add ONE fake observation: SPY +5%, XLE −15% (a crash-day artifact). Refit.
+How much did beta move from one point? What does this imply about regression
+on crash days / data errors — and name one defense you'll apply in module 06.
+
+```python
+# YOUR CODE + answer:
+```
+
+## Hints
+
+- E2: SSE in (a,b) is a convex paraboloid — unique minimum, start-point
+  irrelevant (for 2 params; remember this when it's NOT true: module 09).
+- E5: one point moves OLS by ∝ its squared distance — squares amplify
+  outliers' influence.

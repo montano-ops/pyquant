@@ -1,0 +1,105 @@
+# Day 15 — Solution: The Central Limit Theorem
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import matplotlib.pyplot as plt
+import scipy.stats as st
+plt.rcParams["figure.figsize"] = (10, 4)
+```
+
+## E1 — the sampling distribution, manufactured
+
+```python
+rng = np.random.default_rng(5)
+xg = np.linspace(-5, 5, 400)
+for n in [5, 30, 200]:
+    draws = rng.standard_t(3, size=(20_000, n))
+    means = draws.mean(axis=1)
+    z = (means - means.mean()) / means.std()
+    print(f"n={n:3d}: P(|z|>2) = {(np.abs(z) > 2).mean():.3%} (normal: 4.55%)")
+    plt.hist(z, bins=80, density=True, histtype="step", label=f"n={n}")
+plt.plot(xg, st.norm.pdf(xg), "k--", label="normal")
+plt.legend(); plt.xlim(-6, 6); plt.show()
+```
+
+**Expected numbers:** n=5 → P(|z|>2) ≈ 6–8% (fat, non-normal); n=30 →
+≈ 4.8–5.5% (nearly normal in the body, still slightly heavy at 2σ);
+n=200 → ≈ 4.5–4.7% (indistinguishable). **The CLT is a *convergence
+theorem*, not a guarantee: how far n must go depends on the parent's
+tails.** With t(3) parents, n=30 is fine for the body and still a bit
+optimistic at 3σ+.
+
+## E2 — the two distributions
+
+```python
+rng = np.random.default_rng(6)
+parent = rng.standard_t(3, 50_000)
+means30 = rng.standard_t(3, (50_000, 30)).mean(axis=1)
+plt.hist(parent, bins=200, density=True, histtype="step", label="single draws (risk mgmt)")
+plt.hist(means30, bins=200, density=True, histtype="step", label="30-day means (statistics)")
+plt.xlim(-6, 6); plt.legend(); plt.show()
+```
+
+Single draws: wide, heavy-tailed — the distribution your *P&L* samples
+daily (risk management's object). 30-day means: narrow, bellish — the
+distribution your *performance estimates* sample (statistics' object).
+**A strategy can have a brutal loss distribution and a well-behaved
+average-return estimator simultaneously — the CLT is why statistics
+works at all in markets, and why it keeps seducing people into
+forgetting the parent.**
+
+## E3 — CLT on real returns
+
+```python
+import os
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    px = get_prices("SPY", start="2010-01-01")
+else:
+    px = synthetic_prices(n_days=3000, n_assets=1, seed=23)
+    px.columns = ["SPY"]
+r = px["SPY"].pct_change().dropna().values
+n = len(r)
+idx = rng.integers(0, n, (5000, 21))
+sample_means = r[idx].mean(axis=1)
+print(f"SD of sample means: bootstrap {sample_means.std():.6f} "
+      f"vs σ/√21 formula {r.std() / np.sqrt(21):.6f}")
+```
+
+**Expected reasoning.** The two agree within a few percent — BUT the
+bootstrap here draws days independently, while real returns have
+volatility clustering: real 21-day blocks share a vol regime, so the
+true sampling SD of 21-day means is somewhat larger than either number.
+**Agreement with an independence-based formula is evidence the CLT
+works; the residual gap is the footprint of dependence** (day 19 turns
+that footprint into n_eff).
+
+## E4 — the inference preview
+
+```python
+mu, sigma, n = 0.001, 0.012, 63
+z = mu / (sigma / np.sqrt(n))
+from scipy import stats
+print(f"z = {z:.2f}, naive one-sided p = {1 - stats.norm.cdf(z):.4f}")
+```
+
+z = 0.66, naive p ≈ 0.25 — the strategy's 63-day record is noise, full
+stop. Three caveats that make reality worse: (1) **fat tails** — the
+parent is t-like, so the mean's tail is wider than normal at small n;
+(2) **dependence** — vol clustering shrinks n_eff below n; (3)
+**selection** — this strategy reached your desk *because* its record
+looked good, so the relevant p-value belongs to the best of many, not to
+one (module 04's multiple-testing correction, module 13's deflated
+Sharpe).

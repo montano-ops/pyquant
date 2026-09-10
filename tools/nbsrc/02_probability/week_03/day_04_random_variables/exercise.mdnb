@@ -1,0 +1,72 @@
+# Day 4 — Exercise: Random Variables & Distributions
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import scipy.stats as st
+plt.rcParams["figure.figsize"] = (10, 4)
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+```
+
+## E1 (L3) — Normal-model arithmetic
+
+Toy model: daily returns ~ N(0.0004, 0.011). Compute: P(r > 1%); P(r < −1%);
+P(−0.5% < r < +0.5%); the 1st percentile (the "1% VaR" preview). Use
+`st.norm` — and sanity-check P(−0.5%<r<0.5%) ≈ what the empirical rule
+suggests for ±0.45σ.
+
+```python
+# YOUR CODE
+```
+
+## E2 (L4) — The ECDF, by hand
+
+Take SPY daily returns (2010→). Sort them; build the ECDF; plot it. Mark
+the 5th percentile. Then overlay the normal-model CDF (μ, σ from the same
+data). Where do the curves disagree, and what does that location mean?
+
+```python
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+# YOUR CODE
+```
+
+## E3 (L6) — Models are claims
+
+The normal model of daily returns makes three specific claims (symmetry,
+thin tails, constant σ). For each claim: (a) state it as a checkable
+statement about the ECDF/histogram, (b) run the check on your data, (c)
+verdict.
+
+```python
+# YOUR CODE + verdicts:
+```
+
+## E4 (L7) — Where could this mislead?
+
+A risk report says "1% daily VaR = the empirical 1st percentile of the
+last 250 days". Give two distinct failure modes of that number (think:
+sample noise at the extreme; regime shift).
+
+```python
+# Your answer:
+```
+
+## Hints
+
+- E2: `np.sort(r)` + `np.arange(1, n+1)/n`; the disagreement concentrates
+  in the tails — left tail especially.
+- E3: symmetry → compare ECDF at +x vs −x; tails → count |z|>3 vs 0.27%;
+  constant σ → rolling 21d vol plot (flat or not?).

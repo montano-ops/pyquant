@@ -1,0 +1,152 @@
+# Day 7 — Solution: The t-Statistic Laboratory
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from scipy import stats
+from scipy.stats import norm
+plt.rcParams["figure.figsize"] = (10, 4)
+```
+
+## E1 — the t-road
+
+```python
+rng = np.random.default_rng(0)
+N_PATHS, YEARS = 10_000, 30
+mu_d = 0.5/np.sqrt(252)
+x = rng.normal(mu_d, 1.0/np.sqrt(252), (N_PATHS, YEARS*252))
+cs = np.cumsum(x, axis=1)
+n = np.arange(1, YEARS*252 + 1)
+sigma = 1.0/np.sqrt(252)                        # known by construction
+t_run = cs / (sigma*np.sqrt(n))                 # running t (known sigma)
+t_year = t_run[:, 252-1::252]                   # t at each year-end
+yrs = np.arange(1, YEARS+1)
+
+med = np.median(t_year, axis=0)
+p5, p95 = np.percentile(t_year, [5, 95], axis=0)
+plt.plot(yrs, med, label="median t")
+plt.fill_between(yrs, p5, p95, alpha=0.3, label="5-95%")
+plt.plot(yrs, 0.5*np.sqrt(yrs), "k--", label="SR·√Y")
+plt.axhline(1.645, color="red", ls=":", label="one-sided 5%")
+plt.legend(); plt.xlabel("years"); plt.ylabel("running t"); plt.show()
+
+for y in [1, 5, 10, 16, 25]:
+    print(f"y={y:2d}: P(t>=1.645) sim {(t_year[:, y-1] >= 1.645).mean():.3f} "
+          f"vs analytic {norm.cdf(0.5*np.sqrt(y)-1.645):.3f}")
+```
+
+**Expected results.** The median hugs SR√Y; the band is ±0.9-ish wide
+forever (SE of the t itself). Power: 0.126 / 0.299 / 0.475 / 0.639 /
+0.804 — **the road to significance for a genuinely good strategy is
+measured in decades, and at 5 years 70% of real SR-0.5 strategies
+look unproven.** (10,000×7,560 floats = ~600MB — use float32 or
+reduce to 2,000 paths on small machines.)
+
+## E2 — the casino
+
+```python
+rng = np.random.default_rng(1)
+N, T = 5_000, 10*252
+x = rng.normal(0, 1/np.sqrt(252), (N, T))
+# trailing 252d t at each month-end from month 12:
+cs = np.cumsum(x, axis=1)
+sq = np.cumsum(x**2, axis=1)
+def t_at(end):     # end = index of last day (inclusive)
+    s = cs[:, end] - (cs[:, end-252] if end >= 252 else 0)
+    v = (sq[:, end] - (sq[:, end-252] if end >= 252 else 0))/251
+    return s/np.sqrt(252*v)
+months = np.arange(12, 121)
+t_monthly = np.column_stack([t_at(m*21 - 1) for m in months])   # (N, n_months)
+crossed = t_monthly >= 1.645
+for horizon_mo in [60, 120]:
+    within = crossed[:, months <= horizon_mo].any(axis=1)
+    print(f"within {horizon_mo//12}y of monthly looks: P(false 'discovery') = {within.mean():.0%}")
+first = np.where(crossed, months[None, :], 999).min(axis=1)
+print(f"median months to first false discovery: {np.median(first):.0f}")
+```
+
+**Expected results.** Single pre-specified look: 5%. Monthly looks
+over 5 years: ~30–40%; over 10 years: ~50%+. Median time to first
+false "discovery" for the stop-at-significance trader: ~3–5 years of
+monthly peeking. **Optional stopping converts the 5% test into a
+near-coin-flip discovery machine — and 90% of live-strategy
+"monitoring" is exactly this procedure.**
+
+## E3 — fat tails
+
+```python
+rng = np.random.default_rng(2)
+x = rng.standard_t(5, (5_000, 30*252))/np.sqrt(5/3)*(1/np.sqrt(252)) + 0.5/np.sqrt(252)
+cs = np.cumsum(x, axis=1); n = np.arange(1, 30*252+1)
+sigma = 1/np.sqrt(252)
+t_year = (cs/(sigma*np.sqrt(n)))[:, 252-1::252]
+for y in [5, 25]:
+    print(f"SR=0.5 t(5) tails, y={y}: power {(t_year[:, y-1] >= 1.645).mean():.3f}")
+x0 = rng.standard_t(5, (5_000, 252))/np.sqrt(5/3)*(1/np.sqrt(252))
+t0 = x0.mean(axis=1)/(x0.std(axis=1, ddof=1)/np.sqrt(252))
+print(f"null, t(5), n=252: rejection {(np.abs(t0) > stats.t.ppf(.975, 251)).mean():.1%}")
+```
+
+**Expected results.** Power at y=5: ~27% (vs 30% normal — a small
+drag); at y=25: ~78% (vs 80%). Null rejection at n=252: ~5.5–6% (vs
+5%). **Fat tails are a small-sample tax on the t-test: real at
+monthly horizons, nearly gone by decade scale. The lab's biggest
+effects are E2's peeking and E4's clustering — fat tails are third.**
+
+## E4 — clustering
+
+```python
+rng = np.random.default_rng(3)
+N, T = 5_000, 30*252
+p, s_hi, s_lo = 0.05, 0.02, np.sqrt((1e-4 - 0.05*0.02**2)/0.95)  # uncond sigma 1%
+hi = rng.random((N, T)) < p
+vol = np.where(hi, s_hi, s_lo)
+x = rng.normal(0.5/np.sqrt(252), vol)
+cs = np.cumsum(x, axis=1); n = np.arange(1, T+1)
+t_year = (cs/(x.std(axis=1, keepdims=True)*np.sqrt(n)))[:, 252-1::252]
+for y in [5, 16, 25]:
+    print(f"SR=0.5 clustered, y={y}: power {(t_year[:, y-1] >= 1.645).mean():.3f}")
+```
+
+**Expected results.** Power at y=5: ~24–27% (vs 30%); y=16: ~55–60%
+(vs 64%); y=25: ~74–77% (vs 80%). **Clustering stretches the evidence
+clock ~20–30%: unlucky-vol samples waste years.** The mechanism: a
+high-vol first year dominates the running SE, and the estimator
+doesn't know the vol was temporary.
+
+## E5 — the verdict table + sentences
+
+| P(reject, one-sided 5%) | 1y | 5y | 16y | 25y |
+|---|---|---|---|---|
+| SR=0 (false positive) | 5% | 5% | 5% | 5% |
+| SR=0.5, normal | 13% | 30% | 64% | 80% |
+| SR=0.5, fat tails | 13% | 27% | 62% | 79% |
+| SR=0.5, clustered | 11% | 25% | 55% | 74% |
+
+1. A significant 3-year record: under SR=0.5 power ≈ 22%, under SR=0
+   the false-positive rate is 5% — likelihood ratio ~4:1 before
+   priors, and the tried-strategies prior eats it. It is a weak
+   update, not a verdict.
+2. An insignificant 3-year record: ~78% of true SR-0.5 strategies
+   fail to clear the bar — absence of evidence, not evidence of
+   absence; firing a strategy at 3 years for non-significance is
+   firing the median good strategy.
+3. Monitoring plan for live SR-0.5: pre-committed evaluation
+   horizons (years, not months — E2), thresholds stated in power
+   units ("we expect t≥2 by year 16 at 80%"), every look logged, and
+   process metrics (execution, crowding) between looks — because the
+   statistics cannot see.
+4. (Exemplar) I no longer read "significant" as a property of the
+   strategy — it is a property of the design: n, the SE's assumptions,
+   the number of looks, and the batch it came from. The claim I trust
+   comes with all four printed.

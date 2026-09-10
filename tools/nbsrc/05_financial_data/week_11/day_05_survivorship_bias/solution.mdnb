@@ -1,0 +1,138 @@
+# Day 5 — Solution: Survivorship Bias
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.universe import load_universe, DELISTED_DEMO
+```
+
+## E1 — the graveyard (with the selection equation)
+
+```python
+def build_graveyard(seed=5, n_stocks=400, months=180):
+    rng = np.random.default_rng(seed)
+    mu_yr = rng.normal(0.10, 0.05, n_stocks)             # persistent drift
+    rets = rng.normal(0, 0.10, (months, n_stocks)) + mu_yr[None, :]/12
+    alive = np.ones((months, n_stocks), bool)
+    death_month = np.full(n_stocks, months)
+    for i in range(n_stocks):
+        lam = 0.004 * np.exp(-10*(mu_yr[i]-0.10))        # low drift -> dies young
+        dm = min(int(rng.exponential(1/lam)), months)
+        death_month[i] = dm
+        if dm < months:
+            alive[dm+1:, i] = False                      # alive THROUGH dm
+            rets[dm, i] = -0.30 + rng.normal(0, 0.05)    # Shumway delist month
+    return mu_yr, rets, alive, death_month
+
+mu_yr, rets, alive, death_month = build_graveyard(5)
+n_dead = (death_month < len(rets)).sum()
+print(f"year 15: {len(mu_yr)-n_dead} alive, {n_dead} dead ({n_dead/len(mu_yr):.0%})")
+print(f"corr(drift, months alive) = {np.corrcoef(mu_yr, death_month)[0,1]:+.2f}")
+```
+
+**Expected:** ~47% dead; corr ≈ +0.20 — death is not random, it
+selects on the very quantity your backtest measures. **Without that
+correlation there is almost no bias (test it: set the exp() factor
+to 1) — survivorship bias IS the selection equation.** The graveyard
+is the majority of lived experience at these hazards.
+
+## E2 — two long-only backtests
+
+```python
+months = len(rets)
+cols_surv = death_month >= months
+r_surv = rets[:, cols_surv].mean(axis=1)
+r_pit = np.nanmean(np.where(alive, rets, np.nan), axis=1)
+ann = lambda x: (x.mean()*12, x.std()*np.sqrt(12))
+print(f"survivor-only: mean {ann(r_surv)[0]:.2%}, vol {ann(r_surv)[1]:.2%}")
+print(f"point-in-time: mean {ann(r_pit)[0]:.2%}, vol {ann(r_pit)[1]:.2%}")
+print(f"bias = {ann(r_surv)[0]-ann(r_pit)[0]:+.2%}/yr")
+```
+
+**Expected:** survivor ≈ 11.6%/yr, PIT ≈ 9.6%/yr — **a ~2%/yr
+inflation**, at the top of the lesson's 0.5–2%/yr small-cap range
+because this world's selection is strong (drift-correlated hazard +
+−30% delistings). Decompose it: most of the gap is selection
+(survivors' drifts run hot), the rest is the PIT portfolio eating
+188 × −30% delist months (~0.6%/yr of drag). **The bias is not
+noise — it replicates every run and compounds: 2%/yr × 15y ≈ 35%
+of cumulative fiction.**
+
+## E3 — momentum, two channels
+
+```python
+rets_df = pd.DataFrame(rets)
+def mom(mode):
+    L, S = [], []
+    for t in range(6, months-1):
+        elig = (np.where(cols_surv)[0] if mode == "survivor"
+                else np.where(alive[t])[0])
+        h = rets_df.iloc[t-6:t, elig].mean()
+        lo, hi = h.quantile([0.1, 0.9])
+        nxt = rets_df.iloc[t+1]
+        L.append(nxt[h.index[h >= hi]].mean())
+        S.append(nxt[h.index[h <= lo]].mean())
+    return pd.Series(L), pd.Series(S)
+
+Ls, Ss = mom("survivor"); Lp, Sp = mom("pit")
+sr = lambda x: x.mean()/x.std()*np.sqrt(12)
+print(f"L-S Sharpe: survivor {sr(Ls-Ss):.2f} vs pit {sr(Lp-Sp):.2f}")
+print(f"long-leg mean bias:  {(Ls.mean()-Lp.mean())*12:+.2%}/yr (survivor - pit)")
+print(f"short-leg mean bias: {(Ss.mean()-Sp.mean())*12:+.2%}/yr (survivor - pit)")
+```
+
+**Expected Reasoning.** Long-leg bias ≈ +1.3%/yr (survivor long
+never eats a winner's terminal collapse); short-leg bias ≈ +2.4%/yr
+means the survivor short leg is TOO KIND — the dying losers whose
+−30% collapses pay the short are absent. Net spread: −1%/yr, L−S
+Sharpe roughly halved (≈0.16 vs 0.32 here). **The two legs distort
+in OPPOSITE directions, so the net L−S effect is not a theorem —
+reseed and it wobbles (try it); what IS a theorem: long-only levels
+are overstated, tails are truncated (worst months vanish with the
+dead), and persistence claims are manufactured upward (BGI&R:
+survival correlates with the streaks being measured).** The honest
+sentence for a paper: "universe = point-in-time, delisting returns
+included" — six words that decide whether the momentum number is
+real.
+
+## E4 — BGI&R decode (exemplar)
+
+(a) Means are overstated because the database conditions on an
+outcome that implies success (still existing); persistence is
+overstated because the winners shown are a sample selected for
+continued winning — their past runs are upward-biased relative to
+any new entrant's future. (b) "The data isn't wrong — it answers
+returns *conditional on survival* when the question is returns
+*unconditional* on survival." The cure is not cleaning; it is
+point-in-time membership: condition on existence at t, never on
+existence at the end.
+
+## E5 — where this misleads (exemplar)
+
+"S&P 500, current constituents" for a losers' mean-reversion
+strategy biases UP, badly: current members are precisely the stocks
+that did NOT die — the losers in your sample are temporary,
+recoverable ones, while the real losers (dropped from the index,
+then merged or delisted at −30%+) are invisible. You measure
+buy-the-dip only on dips that recovered. Magnitude: index
+membership and loser-selection align, the strongest form of the
+bias — expect the honest edge to be a fraction of the measured one.
+Fix: point-in-time constituent files (S&P historical membership or
+CRSP's listing/delisting master); the rule — enter on entry date,
+exit on delisting date, delisting return INCLUDED (Shumway:
+performance delistings average about −30% in the final month;
+omit it and every loser strategy inherits fiction). Real-mode
+hook: `load_universe("delisted_demo")` — six once-household names
+(TWX, CELG, RTN, MON, AGN, LEH) that a current-lists pull
+silently drops.

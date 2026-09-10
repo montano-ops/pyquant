@@ -1,0 +1,37 @@
+# Day 20 — Exercise: Module Spine, Cold
+
+## 1. The chain, from memory
+
+One blank cell: E[X], Var(X), Var(aX+bY), 2-asset portfolio variance, SE
+of mean, CLT statement, t-statistic shape. Write them, then verify the
+numeric chain on simulated data end-to-end.
+
+```python
+import numpy as np
+# YOUR CODE
+```
+
+## 2. The two simulations, from memory
+
+(a) SE(p̂) table (n = 63, 252, 1260, p=0.55) — formula + simulation.
+(b) Best of 500 fair "strategies" over 250 days — max win rate.
+
+```python
+# YOUR CODE
+```
+
+## 3. The five mixed problems from review.md — commit to answers, then
+## compute
+
+(1) P(≥138/252|p=.5); (2) ρ̂=0.35, T=126 vs 0 and vs 0.1; (3) Bayes
+(1%/90%/20%); (4) days to t=2 for μ=0.0003, σ=0.012; (5) the placebo
+design for 5-day momentum.
+
+```python
+# YOUR CODE
+```
+
+## 4. Systems check
+
+- [ ] PROGRESS.md updated through day 19.
+- [ ] Tomorrow is the checkpoint: memo-writing day. Review your rubric.

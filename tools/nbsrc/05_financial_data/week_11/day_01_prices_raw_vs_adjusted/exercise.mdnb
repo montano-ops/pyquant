@@ -1,0 +1,71 @@
+# Day 1 — Exercise: Raw vs Adjusted Prices
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+```
+
+## E1 (L4) — Manufacture a stock, split the truth from it
+
+Construct: 500 days, start $100, daily noise (σ=1%), 2:1 split at day
+300, $1 dividend every 63 days. Build (a) the raw series, (b) the
+total-return holder series (dividends reinvested), (c) the naive
+raw-close backtest (ignores splits and dividends). Report the three
+final wealths and explain each gap.
+
+```python
+rng = np.random.default_rng(0)
+# YOUR CODE
+```
+
+## E2 (L3) — The factor arithmetic
+
+For your constructed stock: compute the adjustment factor path (splits
+and dividends, backward). Verify: adjusted = raw × factor reproduces
+the holder's total returns (corr = 1.000, max diff < 1e−12).
+
+```python
+# YOUR CODE
+```
+
+## E3 (L5) — Real-mode check (skip if offline)
+
+Online: pull SPY adj_close and raw_close since 1993; the two growth
+multiples; the annualized gap in bp/yr. Compare to SPY's historical
+average dividend yield. In synthetic mode: state what you'd expect and
+why, using your E1 stock's gap scaled to a 2%/yr yield.
+
+```python
+# YOUR CODE
+```
+
+## E4 (L7) — Where could this mislead?
+
+A "mean-reversion in blue chips" backtest buys −3% days using
+raw_close. Its win rate is 61%. Diagnose the phantom edge (what do
+ex-dividend days look like to it?) and the fix.
+
+```python
+# Your answer:
+```
+
+## Hints
+
+- E1: at the split, raw price halves but shares double — track both
+  price and share count, or build the holder series from per-period
+  TOTAL returns.
+- E2: dividend factor uses the AS-TRADED ex-day price: (1 − D/raw_ex) —
+  dividends are per current share, so dividend and price must be in the
+  same units.

@@ -1,0 +1,46 @@
+# Day 6 — Exercise: Week-8 Cold Spot-Check
+
+## 1. From memory
+
+(a) The three SE-violations with directions. (b) CI read correctly +
+its duality with the test. (c) p-value definition + two wrong
+readings. (d) t = SR·√Y + the years-to-t=2 table. (e) The three
+t-test breaks. (f) The 2×2 + the power formula. (g) The three-way
+verdict. (h) P(real|significant) machinery.
+
+```python
+# (a)
+# (b)
+# (c)
+# (d)
+# (e)
+# (f)
+# (g)
+# (h)
+```
+
+## 2. Two computations, cold
+
+(1) SR = 0.55, Y = 12 years: t? and one-sided p? (2) Monthly mean
+0.35%, monthly SD 2.2%, n = 180: t, implied SR, years-to-t=2?
+
+```python
+import numpy as np
+from scipy import stats
+# YOUR CODE
+```
+
+## 3. The 15-minute inference report (the drill)
+
+Blank cell → a returns series of your choice: mean ± SE, 95% CI,
+t, p, implied SR, years-to-t=2, and the one-paragraph caveat (which
+breaks apply, directions). Timed.
+
+```python
+# YOUR CODE
+```
+
+## 4. Error-log triage
+
+Days 1–5 surprises → list. Tomorrow's lab is all simulation — bring
+a clean mental model of E2's dance and E3's lottery.

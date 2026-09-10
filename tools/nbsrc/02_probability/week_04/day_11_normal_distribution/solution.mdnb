@@ -1,0 +1,108 @@
+# Day 11 — Solution: The Normal Distribution
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import scipy.stats as st
+plt.rcParams["figure.figsize"] = (10, 4)
+import os
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    px = get_prices("SPY", start="2010-01-01")
+else:
+    px = synthetic_prices(n_days=3000, n_assets=1, seed=21)
+    px.columns = ["SPY"]
+r = px["SPY"].pct_change().dropna()
+mu, sd = r.mean(), r.std()
+```
+
+## E1 — z-scores and tail probabilities
+
+```python
+print(f"P(r<-2%) = {st.norm.cdf(-0.02, mu, sd):.4f}")
+print(f"z of -3% day: {(-0.03 - mu) / sd:.2f}")
+print(f"1-in-100 left tail: {st.norm.ppf(0.01, mu, sd):.3%}")
+p4 = 2 * (1 - st.norm.cdf(4))
+print(f"P(|z|>4) = {p4:.6f} -> one every {1 / p4:.0f} days "
+      f"({1 / p4 / 252:.0f} years)")
+```
+
+The model puts a |z|>4 day once per ~15,800 days ≈ **once per 63 years**
+(your exact number scales with σ̂ — read it off your own output). Either way: **multi-sigma days are "once a
+career" events under the model, and markets deliver them every few
+years.** Hold that thought for E3.
+
+## E2 — the QQ plot
+
+```python
+z = np.sort((r - mu) / sd)
+q = st.norm.ppf((np.arange(len(z)) + 0.5) / len(z))
+plt.scatter(q, z, s=6)
+plt.plot([-4, 4], [-4, 4], "r--")
+plt.xlabel("normal quantiles"); plt.ylabel("real z-scores")
+plt.title("QQ plot: SPY daily returns vs normal"); plt.show()
+```
+
+**Expected reading.** Center hugs the 45° line (the normal fits the
+body); both ends curl away *steeper* — the most negative empirical
+observations sit far below the line, the most positive far above. The
+data's tails are fatter than normal on BOTH sides, typically worse on
+the left. **The QQ plot is a tail microscope: two lines that agree in
+the middle and diverge at the ends is the visual signature of
+fat-tailed data.** Module 03 formalizes it (kurtosis, Jarque–Bera); you
+now read the picture.
+
+## E3 — the tail count
+
+```python
+zfull = (r - mu) / sd
+for k in [3, 4]:
+    obs = (np.abs(zfull) > k).mean()
+    model = 2 * (1 - st.norm.cdf(k))
+    print(f"|z|>{k}: observed {obs:.3%} vs normal {model:.3%} "
+          f"-> multiple {obs / model:.1f}x")
+```
+
+Real SPY: |z|>3 observed ≈ 1–2% vs 0.27% — a **5–7× tail multiple**.
+Implication for a "99% VaR = normal 1% quantile": the true frequency of
+breaching that barrier is ~5× the advertised 1% — your "once per 100
+days" loss happens every ~20 days. **The multiple is the correction
+factor the risk manager refused to apply.**
+
+## E4 — 1987, computed
+
+```python
+z87 = -0.205 / 0.01
+p87 = st.norm.cdf(z87)
+print(f"z = {z87:.0f}, P = {p87:.2e}, once per {1 / p87 / 252:.1e} years")
+```
+
+z ≈ −20.5; P ≈ 10⁻⁹³; once per ~10⁹¹ years. The universe is 1.4×10¹⁰
+years old. **Under the normal model, October 19, 1987 is not a tail
+event — it is an impossibility. It happened. Therefore the model is
+wrong, and every risk number computed through it is wrong in the same
+direction.** This single computation ended the credibility of
+normal-daily-return risk models; it is why module 09 exists.
+
+## E5 — where this misleads
+
+Part 1: 3σ is 99.7% only under normality; real daily returns carry a
+5–10× tail multiple, so "beyond 3σ" is a ~1–2% event, not 0.3% — margin
+calls arrive ~5× as often as designed. Part 2: σ̂ is estimated from a
+window; volatility clusters, so the σ that applies tomorrow in a storm
+can be 2–3× the trailing average used to size the book. **The two errors
+compound: fatter tails AND a denominator that grows precisely when the
+tail arrives.**

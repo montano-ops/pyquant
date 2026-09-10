@@ -1,0 +1,52 @@
+# Day 6 — Solution: Week-8 Spot-Check
+
+## 1. From memory — reference
+
+(a) Fat tails (small-n t hot; CLT repairs ~n=500); clustering
+(n_eff < n for vol-based SEs); non-stationarity (parameter moves; SE
+can't fix).
+(b) The procedure covers μ in 95% of samples; duality: the 95% CI is
+the set of μ₀ a 5% two-sided test wouldn't reject.
+(c) p = P(data this extreme | H₀); NOT P(H₀|data), NOT "chance it's
+luck"; uniform under H₀ → the 5% lottery.
+(d) t = SR_a·√Y; Y=(2/SR)²: SR 1→4y, 0.7→8y, 0.5→16y, 0.3→44y;
+80% power one-sided: 6/13/25/69.
+(e) Fat tails (n=60: 5% → ~7%); clustering (mean's SE ≈ fine,
+vol-statistics' SE understated √(n/n_eff)); overlap/autocorrelation
+(SE understated up to 2× — the worst and most common).
+(f) α chosen, power computed: Φ(SR√Y − 1.645) one-sided; design
+n = ((z_α+z_β)σ/δ)².
+(g) Statistical (t/power) / economic (bp vs costs) / tradable
+(capacity, drawdown, mandate) — three independent answers.
+(h) P(real|sig) = base·power/(base·power + (1−base)·α); base 1/5,
+1/20, 1/100 at power 0.8 → 80%/50%/14%.
+
+## 2. Two computations
+
+```python
+import numpy as np
+from scipy import stats
+from scipy.stats import norm
+t = 0.55*np.sqrt(12)
+print(f"(1) t = {t:.2f}, one-sided p = {1-norm.cdf(t):.4f}")
+sr_m = 0.0035/0.022
+t2 = sr_m*np.sqrt(180)
+print(f"(2) t = {t2:.2f}; SR annual = {sr_m*np.sqrt(12):.2f}; "
+      f"years to t=2: {(2/(sr_m*np.sqrt(12)))**2:.1f}")
+```
+
+(1) t = 1.90, p ≈ 0.029 — just clear of the line: a 12-year SR-0.55
+record is *barely* significant at 5% one-sided. The field's dirty
+secret, quantified. (2) t = 2.14; SR ≈ 0.55 annualized; years to
+t=2 ≈ 13 — consistent (15 years of data, t slightly above 2: the
+arithmetic is self-checking).
+
+## 3. The drill (reference shape)
+
+Report: mean +3.9bp ± 1.6bp (n = 5,040, 2005→2024); CI [2bp, 5.5bp]
+daily → annualized [+5.5%, +13.9%] (linear); t = 2.4, p = 0.016;
+implied SR = 2.4/√20 = 0.54; years-to-t=2 at this SR: 13.8. Caveats:
+fat tails repaired at this n (for the mean); clustering: SE on the
+Sharpe (not the mean) understated ~1.3–1.6×; no overlap (daily,
+non-overlapping). **The report is one paragraph, and its last
+sentence is the implied Sharpe — the effect size the t was hiding.**

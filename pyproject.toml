@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "qrc"
+version = "0.1.0"
+description = "Data utilities for the paper-driven quant research course (qrc)"
+requires-python = ">=3.10"
+dependencies = [
+    "pandas>=2.0",
+    "numpy>=1.24",
+    "pyarrow>=14",
+    "yfinance>=0.2.40",
+]
+
+[tool.setuptools]
+packages = ["qrc"]

@@ -1,0 +1,89 @@
+# Day 4 — Exercise: Skewness & Kurtosis
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+import scipy.stats as st
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    px = get_prices(["SPY", "TLT", "XLE"], start="2005-01-01")
+else:
+    px = synthetic_prices(n_days=5000, n_assets=3, seed=34, drift_spread=0.0003)
+    px.columns = ["SPY", "TLT", "XLE"]
+```
+
+## E1 (L3) — Moments with error bars
+
+For each asset: skew and excess kurtosis, each ± SE (formulas √(6/n),
+√(24/n)). Which assets clear 2 SE from zero, on which moment?
+
+```python
+# YOUR CODE
+```
+
+## E2 (L4) — The k⁴/n law
+
+Simulate: n=5000 standard normals; add one outlier of k = 5, 10, 20
+sigmas (three cases). Plot excess kurtosis vs k. Verify the k⁴/n
+contribution rule. Then: at what k does ONE day dominate a real SPY
+sample's kurtosis (compare against SPY's actual worst z)?
+
+```python
+# YOUR CODE
+```
+
+## E3 (L5) — Shape, seen: the three QQ patterns
+
+Generate: (a) normal, (b) t(5), (c) your own "negative-skew fat-tail"
+sample (e.g., 0.7·N + 0.3·(−|t(3)|·2)). Three QQ plots side by side
+with the 45° line. For each: where does it bend, and which moment is
+responsible?
+
+```python
+# YOUR CODE
+```
+
+## E4 (L5) — Real shapes
+
+For SPY, TLT, XLE: QQ plots + the skew/kurt table from E1. Match each
+asset to a toy family (normal / t(df≈?) / skewed-t) and defend in one
+sentence each.
+
+```python
+# YOUR CODE
+```
+
+## E5 (L7) — Strategy autopsy
+
+Strategy monthly returns (invent 60 months, realistic): design a
+short-vol profile (skew ≈ −1, kurt ≈ 6, positive mean) and a long-vol
+trend profile (skew ≈ +0.8, kurt ≈ 3, lower win rate). Compute the
+moments of your inventions to prove they match the design. Then one
+paragraph: which moment tells the two apart fastest at n = 12?
+
+```python
+# Your answer:
+```
+
+## Hints
+
+- E2: kurt after adding one k-σ point to n normals ≈ k⁴/n (minus small
+  corrections); SPY's worst z since 1993 is around −20 (1987 is not in
+  SPY; but 2008 had ≈ −7σ days) — compute YOUR sample's worst z.
+- E5: at n = 12, SE(skew) = 0.71, SE(kurt) = 1.41 — neither moment is
+  measurable in a year; the win-rate difference might be. What does
+  that say about "we'll know in a year"?

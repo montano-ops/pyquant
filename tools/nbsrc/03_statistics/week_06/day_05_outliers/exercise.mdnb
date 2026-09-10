@@ -1,0 +1,91 @@
+# Day 5 — Exercise: Outliers
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+from scipy import stats
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    px = get_prices("SPY", start="1993-01-01")
+else:
+    px = synthetic_prices(n_days=8000, n_assets=1, seed=35)
+    px.columns = ["SPY"]
+r = px["SPY"].pct_change().dropna()
+```
+
+## E1 (L3) — Classical vs robust z
+
+Compute classical z and robust z (median/MAD). Count |z|>3 under each.
+List the 5 most extreme days by robust z with dates. For the top date:
+is it a real market event or a data error? (Check: the neighboring
+days' returns, the calendar.)
+
+```python
+# YOUR CODE
+```
+
+## E2 (L4) — Winsorize and trim, measured
+
+At 1% and 5%: report mean, SD, excess kurtosis for raw / winsorized /
+trimmed. One table. Which statistic moves most, and why (which power
+of z does each statistic involve)?
+
+```python
+# YOUR CODE
+```
+
+## E3 (L5) — The 1987 experiment, on your worst day
+
+Drop your sample's worst day (E1's top). Recompute: mean, SD, kurtosis,
+max drawdown, p1. Present with/without. Which statistics are "one
+observation deep"?
+
+```python
+def max_dd(s):
+    w = (1 + s).cumprod()
+    return (1 - w / w.cummax()).min()
+# YOUR CODE
+```
+
+## E4 (L6) — Data error or market? A triage drill
+
+Three suspicious rows (construct them): a −35% single day with normal
+volume; a −8% day with 5× volume; a +45% day right after a long flat
+streak. For each: most likely explanation (split error / real crash /
+vendor glitch / short squeeze), and the check you'd run first.
+
+```python
+# Your triage:
+```
+
+## E5 (L7) — Where could this mislead?
+
+A quant winsorizes returns at 0.5% before running the backtest "to keep
+the statistics stable," and reports Sharpe 1.4. Reconstruct in one
+paragraph what the winsorizing did to the Sharpe's numerator and
+denominator, and what question an allocator must ask.
+
+```python
+# Your answer:
+```
+
+## Hints
+
+- E1: robust z typically flags MORE extreme days than classical z —
+  masking is the reason; if you see fewer, check your MAD scaling.
+- E3: max drawdown and kurtosis should be the "one observation deep"
+  ones; mean barely; p1 in between — explain why p1 survives.

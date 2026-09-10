@@ -1,0 +1,102 @@
+# Day 10 — Solution: Bernoulli & Binomial
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+from scipy import stats
+import os
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+```
+
+## E1 — binomial arithmetic
+
+```python
+n, p = 252, 0.55
+print(f"P(≥138) = {1 - stats.binom.cdf(137, n, p):.4f}")
+print(f"P(≤120) = {stats.binom.cdf(120, n, p):.4f}")
+print(f"E[wins] = {n * p:.1f}, SD = {np.sqrt(n * p * (1 - p)):.1f}")
+phat = 138 / n
+z = (phat - p) / np.sqrt(p * (1 - p) / n)
+print(f"z = {z:+.3f} -> normal p ≈ {1 - stats.norm.cdf(z):.4f}")
+```
+
+P(≥138 | p=.55) ≈ 0.52 — with E[wins] = 138.6, a 138-win year sits dead
+on the mean (z ≈ −0.08). **A 138-win year is *the median outcome* for a
+real 0.55 trader.** Friday's checkpoint runs the same arithmetic against
+p = 0.5, where 138 wins is (mildly) remarkable.
+
+## E2 — the SE table
+
+```python
+rng = np.random.default_rng(10)
+for n in [20, 63, 252, 1260]:
+    wins = rng.random((5000, n)) < 0.55
+    phats = wins.mean(axis=1)
+    print(f"n={n:5d}: formula SE {np.sqrt(0.55*0.45/n):.4f} "
+          f"simulated {phats.std():.4f}")
+```
+
+n=20 → 0.111; n=63 → 0.063; n=252 → 0.031; n=1260 → 0.014. Formula and
+simulation agree to the 3rd decimal. **This table IS the module's
+message: at quarterly scale a ±6pp band around any win rate; at annual
+scale ±3pp; only multi-year samples begin to resolve 52-vs-55.**
+
+## E3 — a real win rate
+
+```python
+if DATA_SOURCE == "real":
+    px = get_prices("SPY", start="2005-01-01")
+else:
+    px = synthetic_prices(n_days=4000, n_assets=1, seed=20, mu=0.0005)
+    px.columns = ["SPY"]
+r = px["SPY"].pct_change().dropna()
+n = len(r); phat = (r > 0).mean(); se = np.sqrt(phat * (1 - phat) / n)
+print(f"p̂ = {phat:.3f} ± {1.96 * se:.3f} (n = {n})")
+for p0 in [0.5, 0.52]:
+    z = (phat - p0) / np.sqrt(p0 * (1 - p0) / n)
+    print(f"vs {p0}: z = {z:+.2f}")
+```
+
+Real SPY 2005→: p̂ ≈ 0.54 ± 0.015 — decisively above 50% (z ≈ +5).
+Whether it clears 52% depends on the exact sample (z anywhere from ~1.5
+to ~3 across data sources and windows) — run it and see. **Both
+statements are about the same data; the SE decides which questions it can
+answer.** "The market drifts up" survives; the precise *size* of the
+drift is far more fragile — means are estimated brutally (day 12).
+
+## E4 — the Twitter account
+
+```python
+print(f"(a) P(≥8 of 10 | p=0.5) = {1 - stats.binom.cdf(7, 10, 0.5):.4f}")
+rng = np.random.default_rng(0)
+best = (rng.random((1000, 10)) < 0.5).sum(axis=1).max()
+print(f"(b) best of 1000 fair accounts: {best}/10")
+```
+
+(a) ≈ 5.5% — unremarkable alone. (b) the *expected* best of 1,000 fair
+accounts is 9 or 10 of 10: your feed's star is exactly what pure chance
+manufactures from a large population. (c) The question: **"how many
+accounts/strategies were started, and what happened to the others?"** —
+the denominator. Without it, the record is uninterpretable.
+
+## E5 — frequency confound
+
+A: SE = √(.6·.4/40) = 0.077 → the 60% is a ±15pp claim: 60% ± 15pp
+*includes a losing strategy*. B: SE = √(.52·.48/2500) = 0.010 → 52% ±
+2pp: ironclad evidence of a small edge. **As evidence, B wins by an
+order of magnitude. As a strategy, A could still be better** — if its
+true edge is real, expectancy = pW−(1−p)L depends on payoff sizes, and a
+60%-win-rate × 2R strategy crushes a 52% × 1R one. Frequency of wins and
+size of wins are different dials (day 7's W and L); never confuse
+"well-evidenced" with "profitable."

@@ -1,0 +1,135 @@
+# Day 4 — Solution: Building a Panel
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.synth import synthetic_prices
+```
+
+## E1 — the defect panel
+
+```python
+rng = np.random.default_rng(3)
+n = 2000
+base = synthetic_prices(n_days=n, n_assets=6, seed=3, corr=0.3)
+base.columns = ["A", "B", "C", "D", "E", "F"]
+
+def make_defects(px):
+    px = px.copy()
+    px.loc[:px.index[399], "B"] = np.nan                  # IPO at day 400
+    px.loc[px.index[1600]:, "C"] = np.nan                 # delisted at 1600
+    halt = px.index[900:905]
+    px.loc[halt, "D"] = np.nan                           # 5-day halt
+    px.loc[px.index[700], "E"] = px["E"].iloc[699] * 0.65  # -35% injected day
+    px["F"] = np.nan                                     # failed ticker
+    return px
+
+panel = make_defects(base)
+print(panel.isna().sum())
+```
+
+**The lattice read:** B 400 leading, C 400 trailing, D 5 interior,
+E 0, F all. Each pattern is a different OBJECT (nonexistence, death,
+suspension, event, error) — and each demands a different
+disposition.
+
+## E2 — the cleaning duel
+
+```python
+r = lambda p: p.pct_change()
+
+drop = panel.dropna()
+print(f"dropna: {drop.shape} of {panel.shape}")           # expect (0, 6)!!
+fill0 = panel.ffill().fillna(0)
+print(f"E vol clean {panel['E'].pct_change().std():.4f} vs fill0 "
+      f"{fill0['E'].pct_change().std():.4f}")
+d_fill = fill0["D"].pct_change()
+print(f"D resumption return (ffill): {d_fill.iloc[905]:+.2%} <- phantom")
+```
+
+**Expected Reasoning.** dropna on this panel returns ZERO rows: F (all
+NaN) kills every date, and even without F, B's leading + C's trailing
+never coexist. **The dropna panel is empty; the dropna-except-F panel
+is the 1,200-day intersection where B and C both lived — 40% of the
+sample deleted by cleaning.** fill0/ffill fabricates calm in B's gap,
+a flat halt then a jump for D, and understates E's vol slightly (one
+zero day). The research panel is outer + NaN-preserved, with the
+listing map as metadata.
+
+## E3 — the phantom-return flag
+
+```python
+def returns_with_flags(px):
+    rets, phantom = {}, {}
+    for c in px.columns:
+        s = px[c].dropna()
+        rr = s.pct_change()
+        gaps = s.index.to_series().diff()
+        ph = gaps > pd.Timedelta(days=4)      # >1 trading day apart (weekend-proof)
+        ph = ph.reindex(rr.index).fillna(False)
+        rets[c], phantom[c] = rr, ph
+    return pd.DataFrame(rets), pd.DataFrame(phantom)
+
+rets, ph = returns_with_flags(panel)
+print(f"D resumption-day return: {rets['D'].iloc[1:].abs().max():+.2%}, phantom flag: "
+      f"{ph['D'].any()}")
+print(f"total phantom returns: {ph.sum().sum()}")
+```
+
+**Expected:** D's resumption shows a multi-day "return" (the halt's
+news arriving at once) flagged True; C's delist day also flags (its
+last valid price is days before the panel end — no, trailing NaNs
+produce no returns; the flag catches D and any real-data halt/gap).
+**The flag's job is to make the decision explicit per event: NaN it
+(a 1-day return shouldn't carry 5 days of news), keep it (if your
+holding period genuinely spans the halt), or model it — but never
+inherit it silently.**
+
+## E4 — panel_info
+
+```python
+def panel_info(px):
+    rows = []
+    for c in px.columns:
+        s, rr = px[c].dropna(), px[c].pct_change()
+        zero_runs = (s.pct_change() == 0).groupby((s.pct_change() != 0).cumsum()).cumsum().max() if len(s) else 0
+        rows.append(dict(ticker=c, first=s.index[0] if len(s) else None,
+                         last=s.index[-1] if len(s) else None, n=len(s),
+                         nan_pct=px[c].isna().mean(),
+                         big_moves=int((rr.abs() > 0.25).sum())))
+    return pd.DataFrame(rows).set_index("ticker")
+
+info = panel_info(panel)
+print(info)
+```
+
+**Expected flags:** B first=day-400 (IPO); C last=day-1600 (delist);
+D nan_pct small, interior; E big_moves=1 (the injected −35% — module
+03.5's triage case: real or artifact?); F n=0 (failed — loud by
+design in qrc; here it's the injected defect). **The ID card finds
+every defect you planted — that is the test of the ID card.**
+
+## E5 — the reply (exemplar)
+
+"Dropping incomplete days deletes the SAMPLE, not noise: with B alive
+from day 400 and C dead after 1600, the all-present intersection is
+1,200 of 2,000 days — 40% of every stock's history gone, and gone
+non-randomly (the deleted days are exactly B's youth and C's death,
+the two periods where the phenomena we study are most extreme).
+Worse, in a 50-name panel the intersection shrinks toward the
+shortest-lived overlap of the most-recently-listed and
+soonest-to-die — the panel becomes 'days where the survivors
+coincided,' which is survivorship implemented as cleaning. The
+NaN-aware panel keeps every stock's own truth; the cross-section
+per day is computed on who existed that day. That's not 'same
+science, cleaner' — it's different science, quietly wrong."

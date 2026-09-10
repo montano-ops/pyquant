@@ -1,0 +1,115 @@
+# Day 9 — Solution: Is the Mean Stable?
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    px = get_prices("SPY", start="1993-01-01")
+else:
+    px = synthetic_prices(n_days=8000, n_assets=1, seed=38, mu=0.0003)
+    px.columns = ["SPY"]
+r = px["SPY"].pct_change().dropna()
+```
+
+## E1 — rolling mean vs its own noise
+
+```python
+m63 = r.rolling(63).mean()
+mu, se = r.mean(), r.std()/np.sqrt(63)
+out = (m63 > mu + 2*se) | (m63 < mu - 2*se)
+print(f"outside constant-μ 2SE band: {out.mean():.1%} of days (expect ~5%)")
+```
+
+**Expected reasoning.** Real SPY: 15–30% of days outside — far more
+than 5%. BUT the SE assumes iid days; vol clustering makes the true
+band ~1.5–2× wider (n_eff ≈ n/1.5), shrinking the honest outside
+fraction toward 5–15%. **Conclusion: the rolling mean is *roughly*
+consistent with a constant μ once dependence is priced in, and no
+quarterly-resolution test will separate drift from noise. That
+indeterminacy — not "stability" — is the finding.**
+
+## E2 — the chunk test
+
+```python
+chunks = np.array_split(r.values, 10)
+means = np.array([c.mean() for c in chunks])
+se_chunk = r.std()/np.sqrt(len(r)/10)
+print(f"chunk means (bp/day): {[f'{m*1e4:+.1f}' for m in means]}")
+print(f"observed SD {means.std()*1e4:.1f}bp vs SE {se_chunk*1e4:.1f}bp "
+      f"-> instability index {means.std()/se_chunk:.2f}")
+```
+
+**Expected reasoning.** Instability index 1.2–2.0 on real data
+(observed spread beyond pure-noise expectation). Chunks are
+non-overlapping so no overlap-inflation, but within-chunk dependence
+still widens each chunk's true SE — the honest index is *lower* than
+computed. **Verdict: consistent with mild drift on top of noise;
+nothing you could defend in a paper without stronger tools (module 04
+tests + multiple-window evidence).**
+
+## E3 — what would detection take?
+
+```python
+sigma = 0.0105
+for label, days in [("mean shift 0.03pp", 2*(2*sigma/0.0003)**2),
+                    ("vol doubling", None)]:
+    if days:
+        print(f"{label}: n ≈ {days:,.0f} days = {days/252:.0f} years")
+# vol doubling: SE(s)/s ≈ 1/sqrt(2n); need gap (2-1) to clear 2 SEs:
+# 1 > 2/sqrt(2n) -> n > 2 days! But that's the RELATIVE SE of s vs s...
+# honest version: we need the estimate precise enough that 'doubled' is
+# not confusable with 'unchanged': n ≈ (2/(2-1))²/2·... use n where
+# SE(s)/s at 25% = 1/sqrt(2n)=0.25 -> n = 8; in practice vol moves
+# every day, so the question is really 'did the PROCESS vol change' —
+# days, not years.
+print("vol regime shifts are detectable in days-to-weeks; mean shifts need years-to-decades")
+```
+
+**The contrast sentence:** a 3bp mean shift needs ~(2·1.05%/0.03%)² ≈
+4,900 days per window (~20 years each side) to clear 2 SE; a *doubling*
+of vol is visible within days (one 3σ week announces it). **Drift is
+measured in careers, risk in afternoons — design monitoring systems
+accordingly** (monitor vol daily; monitor mean never — monitor process
+instead).
+
+## E4 — the premium's fragility, bootstrapped
+
+```python
+rng = np.random.default_rng(9)
+v = r.values
+n = 7560 if len(v) >= 7560 else len(v)
+idx = rng.integers(0, len(v), (10000, n))
+paths = np.prod(1 + v[idx], axis=1) ** (252/n) - 1
+print(f"30-year annualized mean return: 5th pct {np.percentile(paths,5):.1%}, "
+      f"median {np.percentile(paths,50):.1%}, 95th {np.percentile(paths,95):.1%}")
+```
+
+**Expected reasoning.** The bootstrap range for a 30-year annualized
+return spans roughly ±3–5pp around the median — **"the equity premium"
+as an input to a spending rule is a distribution, not a number.** (The
+block bootstrap — day 19 module 02 — widens it further.) Any plan that
+breaks if the premium is at the 5th percentile is a plan that breaks.
+
+## E5 — the CIO reply (exemplar)
+
+"Our 30-year anchor is one draw: bootstrap-resampled histories put the
+30-year annualized mean at X%–Y% (5th–95th), and the rolling quarterly
+mean is below zero a third of the time even in-sample. The premium
+could plausibly be half our anchor — a level indistinguishable from it
+at this n. Meanwhile volatility, the thing we CAN forecast, moves 10×.
+Proposal: build the plan to survive the 5th-percentile premium; spend
+vol forecasts, not mean assumptions."

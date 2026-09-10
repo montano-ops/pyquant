@@ -1,0 +1,95 @@
+# Day 10 — Exercise: Portfolio Variance
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+plt.rcParams["figure.figsize"] = (10, 4)
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+from qrc.universe import load_universe
+
+if DATA_SOURCE == "real":
+    tickers = load_universe("core_etfs")
+    px = get_prices(tickers, start="2015-01-01")
+else:
+    tickers = [f"S{i}" for i in range(12)]
+    px = synthetic_prices(n_days=2500, n_assets=12, seed=53, corr=0.4)
+    px.columns = tickers
+rets = px.pct_change().dropna()
+Sigma = rets.cov().values
+```
+
+## E1 (L3) — Two-asset variance by hand
+
+Two assets: σ₁ = 20%, σ₂ = 12%, ρ = 0.35. Weights (0.6, 0.4). Compute
+σ_p by hand (build Σ yourself). Then in code. Then set ρ = 1 and ρ = 0 —
+how much risk does correlation buy or remove?
+
+```python
+# YOUR CODE (three scenarios)
+```
+
+## E2 (L4) — wᵀΣw, verified two ways
+
+For equal weights on ALL assets: compute `w @ Sigma @ w` and verify against
+the explicit double sum (nested loops). Then verify against the *empirical*
+variance of the portfolio return series (`(rets @ w).var(ddof=1)`). All
+three must agree — why?
+
+```python
+# YOUR CODE
+```
+
+## E3 (L5) — The diversification curve
+
+For n = 1, 2, 3, 4, 6, 8, 10, 12: average (over 50 random subsets, seeded)
+the annualized vol of equal-weight portfolios of size n. Overlay the two
+theoretical lines: mean-variance/n and mean covariance. Where does the curve
+flatten, and what sets the floor?
+
+```python
+rng = np.random.default_rng(7)
+# YOUR CODE
+```
+
+## E4 (L6) — The floor, quantified
+
+Compute average variance and average covariance (off-diagonal mean) of Σ.
+Report both annualized. In one sentence: what does "the average covariance"
+mean for a 100-stock portfolio in a crisis?
+
+```python
+# YOUR CODE
+```
+
+## E5 (L7) — Where could this mislead?
+
+Your E3 curve is built from one Σ. Describe a realistic market state in
+which the true curve sits *above* yours, and what a portfolio sized on your
+curve would experience.
+
+```python
+# Your answer:
+```
+
+## Hints
+
+- E2: Σ estimated from the same data as the portfolio returns → the
+  identities are exact (up to ddof conventions — reconcile any 251/252
+  factor you see).
+- E3: `rng.choice(tickers, size=n, replace=False)`; average the *vols*, not
+  variances.

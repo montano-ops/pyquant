@@ -1,0 +1,68 @@
+# Day 2 — Exercise: Probability Rules
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+plt.rcParams["figure.figsize"] = (10, 4)
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+```
+
+## E1 (L3) — Union bookkeeping
+
+From a toy return model N(0.0004, 0.011), estimate by simulation (100k
+draws): P(A), P(B), P(A∩B), P(A∪B) where A = {r>1%}, B = {r>−1%} (B is
+"not a big loss"). Verify the union rule holds numerically.
+
+```python
+rng = np.random.default_rng(1)
+# YOUR CODE
+```
+
+## E2 (L4) — Conditional = filter
+
+Using SPY daily returns (2010→): compute P(up), P(up | previous day down),
+P(up | previous two days both down). Do "two red days" change the odds?
+Quantify with the numbers and their SEs (√(p(1−p)/n)) before believing
+yourself.
+
+```python
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+# YOUR CODE (remember: conditions must use PAST days — no shifting bugs)
+```
+
+## E3 (L6) — The implication trap
+
+Define A = {r > 2%}, B = {r > 0}. Compute P(A|B) and P(B|A) on real or
+synthetic returns. Explain in one sentence each why one is 1.0 and the
+other isn't, and why traders constantly quote the wrong one.
+
+```python
+# YOUR CODE + answer:
+```
+
+## E4 (L7) — False conclusion factory
+
+Give a one-paragraph example of a trading conclusion built on P(A|B) quoted
+as if it were P(B|A) — make it concrete and painful.
+
+```python
+# Your answer:
+```
+
+## Hints
+
+- E2: `r.shift(1) < 0` is yesterday's condition; dropna the shifted masks;
+  each conditional's n differs — report it.
+- E3: A ⊂ B, so A∩B = A: P(A|B) = P(A)/P(B) < 1, P(B|A) = 1.

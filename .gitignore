@@ -1,0 +1,22 @@
+# --- data (never commit downloaded market data) ---
+data/cache/
+data/raw/
+*.parquet
+
+# --- python ---
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.mypy_cache/
+*.egg-info/
+build/
+dist/
+
+# --- jupyter ---
+.ipynb_checkpoints/
+
+# --- os / editor ---
+.DS_Store
+.idea/
+.vscode/

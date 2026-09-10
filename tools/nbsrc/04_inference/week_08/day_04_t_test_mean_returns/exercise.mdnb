@@ -1,0 +1,89 @@
+# Day 4 — Exercise: The t-Test for Mean Returns
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+from scipy import stats
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    r = get_prices("SPY", start="1993-01-01")["SPY"].pct_change().dropna()
+else:
+    r = synthetic_prices(n_days=8000, n_assets=1, seed=46)["S0"].pct_change().dropna()
+```
+
+## E1 (L3) — The identity, verified
+
+Compute t for SPY's mean the long way and via t = SR_annual·√years.
+Then verify the years-to-t=2 law by simulation: for SR ∈ {0.3, 0.5,
+1.0}, simulate and report the median year that t first crosses 2
+(200 runs each).
+
+```python
+# YOUR CODE
+```
+
+## E2 (L4) — Size distortion, measured
+
+Under a fat-tailed null (t(5), σ-matched, n = 60 and n = 252 and
+n = 1000): what fraction of samples reject at nominal 5% (|t|>1.96-ish
+/ t-critical)? Table: n × rejection rate. Where does the CLT repair
+it?
+
+```python
+rng = np.random.default_rng(0)
+# YOUR CODE
+```
+
+## E3 (L5) — Clustering distortion
+
+Generate a null (zero mean) with vol clustering (two-state vol: 0.5%
+and 2%, switching with 5% daily prob, matched unconditional σ=1%):
+rejection rates at n = 252, 2520. Compare to iid. Direction and rough
+size?
+
+```python
+# YOUR CODE
+```
+
+## E4 (L4) — Implied Sharpe, on real "papers"
+
+Three claims: (a) t = 2.8 on 8 years of monthly data; (b) t = 4.1 on
+2 years of daily; (c) t = 2.1 on 30 years of monthly. Compute implied
+Sharpe for each. Rank by plausibility for a *tradable* strategy and
+defend the ranking.
+
+```python
+# Your code + answer:
+```
+
+## E5 (L7) — Where could this mislead?
+
+A fund factsheet: "t-statistic 3.1 since inception (5 years) —
+statistically significant alpha." Write the three-question reply.
+
+```python
+# Your answer:
+```
+
+## Hints
+
+- E1: crossing-time median ≈ (2/SR)² in years — log-scale the check.
+- E4: SR_annual = t/√Y (Y in years — the daily/monthly frequency
+  doesn't enter). (a) 2.8/√8 ≈ 0.99; (b) 4.1/√2 ≈ 2.9; (c) 2.1/√30 ≈
+  0.38. Watch the frequency trap: dividing by √(n_periods) gives the
+  PER-PERIOD Sharpe — annualize it back with √(periods/year) and you
+  recover the same t/√Y. Do it both ways as a check.

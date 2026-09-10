@@ -1,0 +1,89 @@
+# Day 11 — Exercise: Non-Normality, Quantified
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+from scipy import stats
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    px = get_prices("SPY", start="1993-01-01")
+else:
+    px = synthetic_prices(n_days=8000, n_assets=1, seed=40)
+    px.columns = ["SPY"]
+r = px["SPY"].pct_change().dropna()
+```
+
+## E1 (L3) — JB by hand and by scipy
+
+Compute JB from the formula; verify against `scipy.stats.jarque_bera`
+(note scipy's kurt convention: it uses the FULL moments — check the
+docstring and reconcile). Report JB, the χ²(2) p-value, and the effect
+sizes (skew±SE, kurt±SE).
+
+```python
+# YOUR CODE
+```
+
+## E2 (L4) — The pathology, manufactured
+
+Simulate normals with a *tiny* contamination: 99.9% N(0,1) + 0.1%
+N(0,4) (kurtosis of the mixture ≈ ...compute it). At n = 100, 1000,
+10000: run JB 1,000 times; report rejection rates. Watch power → 1
+against an alternative nobody cares about.
+
+```python
+# YOUR CODE
+```
+
+## E3 (L4) — The mirror: small-n blindness
+
+Draw n = 60 from t(5) (real fat tails); run JB 1,000 times; rejection
+rate? Now n = 60 from SPY-like empirical bootstrap — same. One
+sentence on monthly-strategy evaluation.
+
+```python
+# YOUR CODE
+```
+
+## E4 (L5) — The consequence sentence
+
+For SPY: compute the tail multiple (observed P(|z|>3) / 0.0027). Write
+the consequence sentence for a normal-VaR desk: "a 99% normal VaR of X%
+is breached in practice about Y× more often than advertised — i.e.,
+roughly every Z days instead of every 100."
+
+```python
+# Your code + sentence:
+```
+
+## E5 (L7) — Where could this mislead?
+
+A vendor: "Our returns pass the Jarque–Bera test (p = 0.21, monthly,
+n = 84)." Reconstruct what that sentence does and does not establish —
+three "does not" bullets.
+
+```python
+# Your answer:
+```
+
+## Hints
+
+- E2: mixture kurtosis — compute E[z⁴] of the mixture by
+  law of total expectation (0.999·3·1 + 0.001·3·4⁴... careful with
+  normalization: for N(0,σ²), E[z⁴] = 3σ⁴).
+- E3: rejection rate at n=60 for t(5) is typically well under 50% —
+  the test is half-blind exactly where strategy evaluation lives.

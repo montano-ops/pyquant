@@ -1,0 +1,85 @@
+# Day 19 — Exercise: Why You Can't Shuffle Time Series
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+plt.rcParams["figure.figsize"] = (10, 4)
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+```
+
+## E1 (L4) — The shuffle, felt
+
+SPY returns (2010→): real vs shuffled (row order destroyed, same values).
+Compare: max drawdown; ACF of |r| at lags 1 and 5; the worst 21-day
+return. Table of six numbers; then one sentence: what exactly did
+shuffling preserve and destroy?
+
+```python
+# YOUR CODE
+```
+
+## E2 (L4) — n_eff, measured
+
+For SPY returns and for r²: compute autocorrelations up to lag 20;
+n_eff = n / (1 + 2Σρ_k) for each. Report n_eff/n for the mean vs for the
+variance estimate. Which statistic's uncertainty did you previously
+understate?
+
+```python
+# YOUR CODE
+```
+
+## E3 (L5) — A correct placebo, by design
+
+You want to test whether a 5-day momentum signal has real alignment with
+*future* returns. Design a placebo: circularly shift the signal by a
+random offset ≥ 30 days (preserving its autocorrelation), recompute the
+strategy return, repeat 500 times. Implement; report the placebo
+distribution's mean and SD vs the real strategy's mean. (This is a
+*honest* permutation for time series — you'll reuse it in module 13.)
+
+```python
+rng = np.random.default_rng(13)
+# YOUR CODE
+```
+
+## E4 (L6) — Block length matters
+
+Block bootstrap (lengths 5, 21, 63) of the max drawdown distribution.
+What happens as block length grows? What does the plateau tell you about
+the dependence horizon?
+
+```python
+# YOUR CODE
+```
+
+## E5 (L7) — Where could this mislead?
+
+A paper validates a vol-managed strategy with a *shuffled* placebo and
+reports "p < 0.01". Explain precisely why the test is invalid, and what
+the correct placebo would look like.
+
+```python
+# Your answer:
+```
+
+## Hints
+
+- E2: for r², autocorrelations are large (0.1–0.3 for many lags) →
+  n_eff/n can be 0.3–0.6; for returns ≈ 1.
+- E3: `np.roll(signal, k)` preserves the signal's own structure; only its
+  alignment with returns is randomized.

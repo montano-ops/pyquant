@@ -1,0 +1,83 @@
+# Day 1 — Exercise: Population vs Sample
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+plt.rcParams["figure.dpi"] = 100
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    px = get_prices("SPY", start="1993-01-01")
+else:
+    px = synthetic_prices(n_days=8000, n_assets=1, seed=31)
+    px.columns = ["SPY"]
+r = px["SPY"].pct_change().dropna()
+```
+
+## E1 (L3) — One statistic, many samples
+
+Split the sample into non-overlapping 500-day chunks. Compute each
+chunk's mean and SD. Display as a table. Then compute the SE a
+500-day mean *should* have under stability (s/√500) and compare with
+the observed spread of chunk means. One sentence: population or sample
+wobble?
+
+```python
+# YOUR CODE
+```
+
+## E2 (L4) — The graveyard demo (survivorship, simulated)
+
+Simulate 200 "funds," each a 1,000-day random walk with μ=0, σ=1%
+(seed it). Kill the worst 30% at day 500 (set their remaining returns
+to NaN). Compute "average fund return" (a) on the survivors only,
+using `dropna()` per fund from day 501; (b) on the full panel with the
+graveyard. Report the bias in bp/day and in bp/year.
+
+```python
+# YOUR CODE
+```
+
+## E3 (L5) — Your own sampling distribution
+
+Bootstrap the mean and the SD of r: 2,000 resamples, plot both
+sampling distributions, and report x̂ ± SE and s ± SE in the day-2
+reporting standard (with n and window). Which statistic's sampling
+distribution is wider *relative to its own value*?
+
+```python
+# YOUR CODE
+```
+
+## E4 (L7) — Where could this mislead?
+
+A LinkedIn post: "Backtest of [strategy]: +14.2% CAGR." List the four
+population/sample gaps between that number and what a live investor
+will experience. One line each, no repetition of the lesson's words —
+use your own.
+
+```python
+# Your answer:
+```
+
+## Hints
+
+- E2: build a (200, 1000) array; mask = per-fund cumulative performance
+  at day 500 below the 30th percentile; set those funds' day-501+ to
+  np.nan; then compare means computed with/without the dead.
+- E3: relative SE = SE/value; the mean's will be much larger — that's
+  the day's punchline, quantified.

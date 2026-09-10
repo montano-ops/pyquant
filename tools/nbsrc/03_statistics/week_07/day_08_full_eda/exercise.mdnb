@@ -1,0 +1,75 @@
+# Day 8 — Exercise: Full EDA
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import scipy.stats as st
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    px = get_prices("GLD", start="2006-01-01")
+else:
+    px = synthetic_prices(n_days=4000, n_assets=1, seed=37, fat_tails=True)
+    px.columns = ["GLD"]
+r = px["GLD"].pct_change().dropna()
+```
+
+## E1 (L5) — The liturgy, executed
+
+All seven steps on this asset, in order, each with a one-line
+"finding". Steps 0–6 from the lesson. Keep each exhibit titled.
+
+```python
+# YOUR CODE (multiple cells' worth — organize!)
+```
+
+## E2 (L4) — The QQ bend, localized
+
+Fit a normal to the middle 90% of the data (μ, σ from central data
+only); re-plot QQ against THAT fit. Where does the departure start
+now? Report the z where empirical quantiles exceed 1.5× the model.
+
+```python
+# YOUR CODE
+```
+
+## E3 (L6) — The verdict paragraph
+
+Write it (the template). ≤100 words, every number carrying (±, n).
+
+```python
+# Your paragraph:
+```
+
+## E4 (L7) — Explore-then-test discipline
+
+You notice in the histogram that Wednesdays look... wider? (a) State
+the hypothesis precisely. (b) Design the test that could confirm it
+(you'll have the tools in module 04 — describe it). (c) What is the
+sophomore's next step, concretely?
+
+```python
+# Your answer:
+```
+
+## Hints
+
+- E2: central fit = compute μ,σ on data between p5 and p95; the QQ
+  against the central fit isolates tail departure from scale inflation.
+- E4(c): trading a "Wednesday vol" effect on 15 years of data with no
+  out-of-sample, no multiplicity control — 5 weekday hypotheses were
+  implicitly scanned, one looked odd.

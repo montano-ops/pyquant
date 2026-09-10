@@ -1,0 +1,44 @@
+# Day 6 — Exercise: Week-1 Cold Spot-Check
+
+No notes. Commit in writing, then verify in code.
+
+## 1. From memory
+
+(a) Sample variance in Σ notation. (b) The drag formula. (c) SSE(a,b) in Σ
+notation. (d) The two annualization rules. Write them here:
+
+```python
+# (a)
+# (b)
+# (c)
+# (d)
+```
+
+## 2. One computation, end to end
+
+Generate (or load) 1000 daily returns. Compute: mean (loop), variance
+(ddof=1, loop), geometric mean, CAGR, annualized vol, and the drag
+approximation. Verify each against a one-liner.
+
+```python
+import numpy as np
+import pandas as pd
+rng = np.random.default_rng(2)
+r = pd.Series(rng.normal(0.0004, 0.011, 1000))
+# YOUR CODE (loop versions + one-liner checks)
+```
+
+## 3. One fit
+
+Fit $y = a + bx$ by minimizing SSE for any (x, y) you like (synthetic ok).
+Verify: residuals' mean ≈ 0, and corr(x, residuals) ≈ 0. Why must both hold
+at the optimum?
+
+```python
+# YOUR CODE + answer:
+```
+
+## 4. Error-log triage (outside the notebook)
+
+Re-read your week's error log. List anything still unexplained — bring it to
+the mini-project.

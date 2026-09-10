@@ -1,0 +1,108 @@
+# Day 3 — Solution: Hypothesis Testing
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from scipy import stats
+```
+
+## E1 — p's shapes
+
+```python
+rng = np.random.default_rng(0)
+def pvals(mu, n=100, reps=5000):
+    return np.array([stats.ttest_1samp(rng.normal(mu, 0.01, n), 0).pvalue
+                     for _ in range(reps)])
+p0, p1 = pvals(0), pvals(0.002)
+print(f"under H0: P(p<.05)={np.mean(p0<.05):.3f}, P(p<.01)={np.mean(p0<.01):.3f}")
+print(f"under H1 (0.02%/day): P(p<.05)={np.mean(p1<.05):.3f}")
+plt.hist(p0, bins=40, alpha=.6, label="H0: uniform")
+plt.hist(p1, bins=40, alpha=.6, label="H1: piles at 0")
+plt.legend(); plt.show()
+```
+
+**Expected reasoning.** Under H₀: uniform — every bin equally likely,
+P(p<0.05) = 0.05 exactly (in expectation). Under H₁ (a 0.02%/day edge
+at n=100): the histogram piles at zero, but only ~16–20% of the mass
+crosses 0.05 (power at this n is small — the pile is taller with more
+n). **The two pictures are the whole module: uniform noise + a small
+signal pile, and everything published is drawn from their mixture.**
+
+## E2 — the dance
+
+```python
+rng = np.random.default_rng(1)
+n_days = 20*252
+mu, sd = 0.4/np.sqrt(252), 0.01
+x = rng.normal(mu, sd, n_days)
+s = pd.Series(x)
+t_rolling = s.rolling(504).apply(lambda w: w.mean()/(w.std(ddof=1)/np.sqrt(len(w))))
+plt.plot(t_rolling.values); plt.axhline(1.96, color="r", ls="--"); plt.axhline(-1.96, color="r", ls="--")
+plt.show()
+sig = t_rolling.dropna() > 1.96
+print(f"rolling 2y t > 1.96: {sig.mean():.0%} of months; "
+      f"distinct 'significant episodes': {(sig.astype(int).diff()==1).sum()}")
+```
+
+**Expected reasoning.** With true SR 0.4, a 2-year window has
+t-center 0.4·√2 ≈ 0.57 — the rolling t wanders 0.57 ± 1 mostly inside
+the lines, crossing 1.96 maybe 2–5 times in 20 years, each "episode"
+lasting months. **A significant stretch of a real-but-small edge is
+nearly indistinguishable from a lucky stretch of nothing; the dance
+teaches that "it was significant in 2019" is not a stable property of
+a strategy but a mood of the estimator.**
+
+## E3 — the lottery
+
+```python
+rng = np.random.default_rng(2)
+pvs = rng.random((100, 1000)) < 0.05
+disc = pvs.sum(axis=0)
+print(f"mean discoveries {disc.mean():.1f}; P(>=1) = {(disc>0).mean():.1%}; P(>=8) = {(disc>=8).mean():.1%}")
+# best-of-100 t-stat, pure noise:
+best_t = []
+for _ in range(1000):
+    t_all = rng.standard_t(250, 100)     # null t-stats, n=250
+    best_t.append(np.max(np.abs(t_all)))
+print(f"best of 100 null |t|: mean {np.mean(best_t):.2f}, 95th {np.percentile(best_t,95):.2f}")
+```
+
+**Expected numbers.** ~5 discoveries mean; P(≥1) ≈ 99.4%; the best of
+100 null t-stats ≈ 3.0 on average (95th pct ≈ 3.4). **The shop's
+"star" — t = 3, "significant at 0.003!" — is the EXPECTED maximum of
+100 coin flippers.** Any fund-selection process that isn't priced
+against this arithmetic is running the lottery and calling it research.
+
+## E4 — the one-sided honesty case (exemplar)
+
+What happened: the effect's sign was known the moment the data arrived
+(the quant looked, saw +, then chose the one-sided test that halves
+the p — 0.08 two-sided became 0.04 one-sided). That's optional
+directionality: a post-hoc one-sided claim has the two-sided p's
+evidence content with half its p-value. Policy: (1) directions are
+pre-registered before data collection, in the research log; (2) any
+test whose direction was chosen after seeing the sign reports
+two-sided p, full stop. The one-sided discount is real but earned in
+advance or not at all.
+
+## E5 — where this misleads (exemplar)
+
+"p = 0.20" with n = 3 years and a plausible effect of SR 0.4: power =
+Φ(0.4·√3 − 1.96) + far tail ≈ Φ(−1.27) ≈ 10%. So under "the effect is
+exactly as plausible as the prior suggests," this study fails to
+detect it 90% of the time — the null result is exactly what we'd see
+whether or not the effect exists. The honest sentence: "p = 0.20 and
+power ≈ 10%: this study was incapable of answering the question; the
+effect remains untested, not refuted. Resolving it at SR 0.4 needs
+(1.96+0.84)/0.4)² ≈ 49 years of this design — or a better design
+(cross-sectional pairing to kill the noise), not more patience."

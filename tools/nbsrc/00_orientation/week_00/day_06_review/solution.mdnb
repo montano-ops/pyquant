@@ -1,0 +1,58 @@
+# Day 6 — Solution: Spot-Check Answers
+
+*Grade yourself by reproduction quality, not by vibes. Anything you could
+not produce from memory goes into the spaced schedule with a date.*
+
+## 1. The snippet
+
+```python
+import numpy as np, pandas as pd
+
+r = pd.Series(np.random.default_rng(0).normal(0, 0.01, 500))  # stand-in returns
+
+# (a) buggy: today's signal claims today's return (look-ahead)
+buggy = r.rolling(5).mean() * r
+
+# (b) fixed: decide at close t, earn day t+1
+fixed = r.rolling(5).mean().shift(1) * r
+```
+
+## 2. The one-liner
+
+```python
+# 63-day rolling annualized volatility:
+# r.rolling(63).std() * np.sqrt(252)
+```
+
+## 3. Conversions (log of the growth factor)
+
+```python
+import numpy as np
+for s in [-0.50, 1.00]:
+    print(f"simple {s:+.0%} -> log {np.log1p(s):+.3f}")
+# -50% -> -0.693   |   +100% -> +0.693
+```
+
+Note the pair: losing half and doubling are the *same* log magnitude. Walk
+down 50%, back up 100%: log-wealth returns to zero — compounding bookkeeping
+made exact.
+
+## 4. The six biases
+
+1. **Look-ahead** — signal×same-day return; information from the future.
+2. **Survivorship** — only today's alive firms in the sample; dead losers missing.
+3. **Selection / cherry-picking** — best period/asset/spec reported.
+4. **Data snooping / overfitting** — best of N searched configurations.
+5. **Unrealistic costs/liquidity** — no spreads/impact/shorting reality.
+6. **Multiple testing** — enough hypotheses tried, 5%-level "discoveries"
+   appear by luck (the meta-bias that afflicts whole literatures).
+
+## 5. JT93 data spec from memory
+
+NYSE+AMEX common stocks · Jan 1965–Dec 1989 · monthly returns · CRSP ·
+price/history filters · rank by past 12-to-2-month return, top decile minus
+bottom decile, overlapping holding periods · ≈1%/month spread.
+
+If you reproduced all five sections cleanly: orientation complete. If not,
+the misses tell you exactly which day to reopen — do it now, while it's
+cheap.

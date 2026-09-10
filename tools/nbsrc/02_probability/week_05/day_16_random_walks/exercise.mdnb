@@ -1,0 +1,82 @@
+# Day 16 — Exercise: Random Walks & Market Efficiency
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+plt.rcParams["figure.figsize"] = (10, 4)
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+```
+
+## E1 (L4) — Grow your own random walk
+
+Simulate 3 price paths (2,500 days, μ=0.0004, σ=0.011, seeded). Plot log
+prices. Compute each path's return autocorrelations (lags 1–5) — how big
+are they by luck alone? Compare against ±2/√T bands.
+
+```python
+rng = np.random.default_rng(8)
+# YOUR CODE
+```
+
+## E2 (L5) — The empirical signature
+
+On SPY (2005→): ACF of returns AND of |returns|, lags 1–10, with ±2/√T
+bands (plot both). State the verdict in the module's sentence: "direction
+___, volatility ___".
+
+```python
+# YOUR CODE
+```
+
+## E3 (L4) — Variance scaling check
+
+For SPY returns and for your simulated walk: compute annualized vol from
+non-overlapping 21-day blocks vs daily×√21... more precisely: Var(21-day
+return) / (21 × Var(daily)) — the variance ratio. ≈1 for a random walk.
+Report for real and simulated; the real number's deviation is the Lo–
+MacKinlay preview.
+
+```python
+# YOUR CODE
+```
+
+## E4 (L6) — The joint hypothesis, in your words
+
+Your backtest beat the market 2010–2020 while small-caps outperformed.
+Write the two rival explanations and the *test* that separates them
+(no code — this is a thinking exercise; module 07 gives you the tools).
+
+```python
+# Your answer:
+```
+
+## E5 (L7) — Where could this mislead?
+
+"Returns are ~unpredictable, so trading is pointless." Attack this claim
+with what you know (volatility predictability; risk premia as payment,
+not prediction; cross-section vs time series).
+
+```python
+# Your answer:
+```
+
+## Hints
+
+- E1: autocorr bands ±2/√2500 = ±0.04 — individual lags wander within
+  them; that's the "no free lunch" look.
+- E3: use `r.rolling(21).sum().iloc[::21]` or non-overlapping groupby —
+  overlapping inflates the count but the ratio still tells the story.

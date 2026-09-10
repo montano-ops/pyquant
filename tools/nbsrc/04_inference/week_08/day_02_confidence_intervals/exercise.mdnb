@@ -1,0 +1,75 @@
+# Day 2 — Exercise: Confidence Intervals
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+from scipy import stats
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    r = get_prices("SPY", start="2010-01-01")["SPY"].pct_change().dropna()
+else:
+    r = synthetic_prices(n_days=4000, n_assets=1, seed=45)["S0"].pct_change().dropna()
+```
+
+## E1 (L3) — Coverage, seen
+
+Simulate the CI procedure 2,000 times (normal parent, n=252): report
+empirical coverage. Repeat with t(3) parents (σ-matched). Where and
+why does coverage sag?
+
+```python
+rng = np.random.default_rng(0)
+# YOUR CODE
+```
+
+## E2 (L4) — The mean-return CI, annualized
+
+For r: 95% CI on the daily mean, then annualized (×252, state the
+approximation). Also bootstrap the annualized mean (compound resampled
+years) and compare — how bad is the linear approximation?
+
+```python
+# YOUR CODE
+```
+
+## E3 (L5) — CI on the Sharpe ratio
+
+SE(SR̂) ≈ √((1 + SR̂²/2)/n) per period. Compute SR̂ annualized for r,
+its SE, and the 95% CI in annualized units. Then compare with the
+bootstrap's CI. What does the CI say about 1-year vs 10-year Sharpe
+*estimates*?
+
+```python
+# YOUR CODE
+```
+
+## E4 (L7) — Where could this mislead?
+
+An allocator: "The fund's 5-year track: 9.1% annualized, 95% CI [3%,
+15%] — I'll budget the midpoint, 9%." Three problems with the
+midpoint-budget, in one paragraph.
+
+```python
+# Your answer:
+```
+
+## Hints
+
+- E2: linear annualization ×252 ignores compounding and skew — the
+  bootstrap on compounded years is the honest version; expect material
+  differences (the compounded CI is asymmetric).
+- E3: annualize the CI by √252 on the SE, not the endpoints... both
+  work if consistent; state what you did.

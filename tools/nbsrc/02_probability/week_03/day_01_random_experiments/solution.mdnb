@@ -1,0 +1,89 @@
+# Day 1 — Solution: Random Experiments & Events
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import scipy.stats as st
+plt.rcParams["figure.figsize"] = (10, 4)
+```
+
+## E1 — making vague measurable
+
+Strong answers: (a) crash = {SPY 1-day return < −3%} (or drawdown > 20%
+within 63 days — but then it's a *windowed* event: define the window);
+(b) "the signal works" = {mean next-day return conditional on signal > 0
+with t ≥ 2 over n ≥ 500 signals}; (c) "unusual volume" = {volume >
+90th percentile of trailing 252-day distribution}; (d) "overvalued" —
+needs a *variable* (e.g., CAPE > its historical 90th percentile); without
+one it is not an event, it is an opinion.
+
+## E2 — frequencies are probabilities, noisily
+
+```python
+rng = np.random.default_rng(0)
+true_p = 1 - st.norm.cdf(0.01, 0.0004, 0.011)
+big = rng.normal(0.0004, 0.011, 100_000) > 0.01
+print(f"P(r>1%): true {true_p:.4f}, estimated {big.mean():.4f}")
+
+small = np.array([ (rng.normal(0.0004, 0.011, 100) > 0.01).mean() for _ in range(500) ])
+plt.hist(small, bins=30); plt.axvline(true_p, color="red")
+plt.title("500 estimates of P(r>1%) from n=100 samples")
+plt.show()
+print(f"estimates: mean {small.mean():.4f}, sd {small.std():.4f}")
+```
+
+**Expected reasoning.** The n=100,000 estimate is essentially exact; the
+n=100 estimates scatter widely (SD ≈ √(p(1−p)/100) ≈ 0.006 against a true
+value of ~0.20 — a ±3% relative band). With rarer events (p = 1%), n=100
+often yields *zero observations* — "it never happened in my sample" is not
+"it can't happen". This is the ancestor of every backtest-sampling worry.
+
+## E3 — events on real data
+
+```python
+import os
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    close = get_prices("SPY", start="2015-01-01")
+    vol = get_prices("SPY", start="2015-01-01", field="volume")
+else:
+    close = synthetic_prices(n_days=2500, n_assets=1, seed=9)
+    close.columns = ["SPY"]
+    vol = (close.pct_change().abs() * 1e6).shift(0)   # volume proxy from activity
+r = close["SPY"].pct_change().dropna()
+v = vol["SPY"].reindex(r.index).ffill()
+
+up = r > 0
+sig2 = (np.abs(r - r.mean()) > 2 * r.std())
+hi_vol = v > v.quantile(0.8)
+
+for name, ev, n in [("up", up, len(r)), ("|z|>2", sig2, len(r)),
+                    ("big gain & hi vol", (r > 0) & hi_vol, len(r))]:
+    p = ev.mean(); se = np.sqrt(p * (1 - p) / n)
+    print(f"{name:18s}: {p:.3%} ± {1.96 * se:.3%} (n={n})")
+```
+
+**Common mistakes:** reporting frequencies without n or uncertainty;
+conditioning volume on the same day *after* the fact for a "predictive"
+claim (same-day associations are fine for description, never for trading).
+
+## E4 — why one decade's frequencies mislead
+
+(1) **Nonstationarity**: the 2015–2025 path is one regime draw — vol
+regimes, rate regimes, and crisis frequency differ across decades; the
+next decade is a different mixture. (2) **Selection**: studying SPY (the
+survivor-champion of its era) conditions on success — a 2015 list of
+"similar" assets would include names now dead (module 05 quantifies).

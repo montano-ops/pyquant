@@ -1,0 +1,42 @@
+# Day 6 — Exercise: Week-6 Cold Spot-Check
+
+## 1. From memory
+
+(a) The four sampling biases, direction each. (b) The SE price list
+(mean/SD/skew/kurt at n=252). (c) 1.4826's meaning. (d) The k⁴/n rule.
+(e) Winsorize vs trim. (f) The outlier protocol's four steps.
+
+```python
+# (a)
+# (b)
+# (c)
+# (d)
+# (e)
+# (f)
+```
+
+## 2. Two computations, cold
+
+(1) n = 1008, skew estimate −0.5: how many SE from zero? Verdict?
+(2) A 252-day sample, σ = 1.1%: SE of the mean? The sample mean is
++0.09% — how many SE from zero?
+
+```python
+import numpy as np
+# YOUR CODE
+```
+
+## 3. The 15-minute drill
+
+From a blank cell: SPY six-number shape report — mean, median, SD,
+MAD-scaled, skew±SE, kurt±SE — each printed with n. Time yourself;
+tomorrow's mini-project runs this on three assets.
+
+```python
+# YOUR CODE
+```
+
+## 4. Error-log triage (outside the notebook)
+
+Days 1–5: any unresolved surprises? They are tomorrow's noise floor —
+list them.

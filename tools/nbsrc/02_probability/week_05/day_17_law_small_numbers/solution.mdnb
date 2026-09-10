@@ -1,0 +1,97 @@
+# Day 17 — Solution: The Law of Small Numbers
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+from scipy import stats
+```
+
+## E1 — the consistent range
+
+```python
+phat = 0.65
+for n in [20, 60, 250, 1000]:
+    se = np.sqrt(phat * (1 - phat) / n)
+    print(f"n={n:5d}: true p consistent with 65% observed: "
+          f"[{phat - 2*se:.2f}, {phat + 2*se:.2f}]")
+```
+
+n=20: [0.43, 0.87] — the observation is consistent with a coin flip AND
+with a monster. n=60: [0.52, 0.78]. n=250: [0.59, 0.71]. n=1000: [0.62,
+0.68]. **"My system wins 65% of the time" said after 20 trades is not a
+claim about the system — it is a claim about the 20 trades.** Only at
+n≈250 does it even exclude 50%, and even then the plausible band is
+±6pp.
+
+## E2 — streaks happen
+
+```python
+rng = np.random.default_rng(21)
+def longest_run(wins):
+    best = cur = 0
+    for w in wins:
+        cur = cur + 1 if w else 0
+        best = max(best, cur)
+    return best
+
+runs = [longest_run(rng.random(250) < 0.5) for _ in range(10_000)]
+runs = np.array(runs)
+print(f"longest win streak in 250 fair flips: median {np.median(runs):.0f}, "
+      f"P(≥8) = {(runs >= 8).mean():.1%}")
+```
+
+**Median longest streak ≈ 7; P(streak ≥ 8) ≈ 39%.** The reply to the
+trader with 8 straight wins: "in 250 fair trades, a streak of 8 happens
+about two times in five — you've shown me a coin that has not yet
+spoken." (Large-sample theory: expected longest run ≈ log₂(250) ≈ 8.)
+
+## E3 — the 500 gurus, reproduced
+
+```python
+rng = np.random.default_rng(22)
+wins = rng.random((500, 250)) < 0.5
+rates = wins.mean(axis=1)
+print(f"best of 500 fair: {rates.max():.1%} ({rates.argmax()})")
+print(f"above 55%: {(rates > 0.55).sum()} of 500")
+
+first50 = wins[:, :50].mean(axis=1)
+tracked = rates[first50 > 0.60]
+print(f"tracked (hot first 50d, n={len(tracked)}): first-50 rate "
+      f"{(first50[first50 > 0.60]).mean():.1%} -> full-year {tracked.mean():.1%}")
+```
+
+**Expected numbers:** best of 500 fair strategies over 250 days ≈ 58–60%
+— a spectacular "manager" with zero skill. Strategies hot in their first
+50 days average ~65% early but regress to ~50–52% over the full year:
+**selection on early performance manufactures exactly the track record
+that looks like skill and is not.** This is incubation bias — a real
+practice at real funds (many funds started, only winners marketed) — and
+the arithmetic engine behind "past performance."
+
+## E4 — paper-trade protocol (exemplar)
+
+"Pre-commit: 250 trades minimum at fixed size, no parameter changes
+mid-stream, logged before execution. Stop only on a structural break
+(instrument delisted, regime shift announced) — never on P&L. Success:
+win rate clears 50% + 2SE (SE = √(.5·.5/250) = 3.2pp → need >56.3%) AND
+expectancy per trade clears costs + 2SE. On ambiguity (e.g., 55% with
+large L): extend to 500 trades before deciding. All thresholds written
+down and dated today." — the entire point is that *you* wrote the
+thresholds before the data existed.
+
+## E5 — self-diagnosis (exemplar patterns to compare against)
+
+Common honest answers: believing a regime call after 3 data points
+(n=3 → SE ≈ 29pp); judging a colleague's strategy by its best month;
+"the model's been right 6 quarters straight" (E2's streak arithmetic).
+The guard is always the same shape: **compute the SE implied by the n you
+actually have, before forming the belief.**

@@ -1,0 +1,90 @@
+# Day 2 — Exercise: Functions & Linearity
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+plt.rcParams["figure.figsize"] = (10, 4)
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+```
+
+## E1 (L3) — Payoff functions
+
+You buy 300 shares at $62 and pay a $8 commission. Price at expiry is $x$.
+
+(a) Write the P&L function (symbols → code): P&L(x) = ?
+(b) Plot it for x from 40 to 90. Mark the breakeven price.
+(c) Your broker charges 2-and-20 (2% of capital + 20% of profits above 0).
+    Write and plot THAT function of gross return $g$ for $g \in [-1, 1]$.
+    Where is it nonlinear, and why?
+
+```python
+x = np.linspace(40, 90, 200)
+# (a) pnl = ...
+# (b) plot + breakeven
+# (c) fee(g) = 0.02 + 0.20 * np.maximum(g - 0.02, 0)  ... adapt and plot
+```
+
+## E2 (L4) — The hedge as slope
+
+You are long 200 units of asset A. Asset B is a candidate hedge. From
+historical daily returns (real or synthetic), compute the ratio
+vol(A)/vol(B). If you short $k$ units of B, your combined P&L slope to B's
+price is $-k$. 
+
+(a) With dollar exposures equal (k chosen so $k·P_B = 200·P_A$), plot one
+year of the combined daily P&L. 
+(b) In the market model language of the lesson: what role is $k$ playing,
+and what would make it a *good* hedge beyond matching sizes?
+
+```python
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    px = get_prices(["XLE", "SPY"], start="2018-01-01")
+    A, B = "XLE", "SPY"
+else:
+    px = synthetic_prices(n_days=500, n_assets=2, seed=9)
+    px.columns = [A, B] = ["A", "B"]
+rets = px.pct_change().dropna()
+# YOUR CODE
+```
+
+## E3 (L6) — Reading linearity in papers
+
+The market model: $R_{i,t} = \alpha_i + \beta_i R_{m,t} + \varepsilon_{i,t}$.
+For each symbol, say what it is in *slope/intercept* language, and give a
+one-sentence trading interpretation of (i) $\beta_i = 1.4$, $\alpha_i = 0$;
+(ii) $\beta_i = 0$, $\alpha_i = 0.001$; (iii) $\beta_i = 0$, $\alpha_i = 0$.
+
+```python
+# Your answers:
+```
+
+## E4 (L7) — Where linearity lies
+
+Give a concrete false-trading-conclusion example where assuming payoffs are
+linear in price loses money. (Hint from the lesson: what has no ceiling?)
+
+```python
+# Your answer:
+```
+
+## Hints
+
+- E1(c): the hinge at g = 0.02 — below it the fee is flat, above it the
+  slope becomes 0.22.
+- E2(b): size-matching ignores *co-movement*; the slope that matters is the
+  covariance-based one (beta — day 11 measures it properly).

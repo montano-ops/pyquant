@@ -1,0 +1,183 @@
+# Day 2 — Exercise: The pandas Diagnostic
+
+Twelve tasks. The first eleven are warm-ups; T12 is a mini "paper data
+section" you must reproduce. Time yourself loosely; anything wrong (not
+slow — *wrong*) gets a targeted review pointer in the solution.
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+
+plt.rcParams["figure.figsize"] = (10, 4)
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    px = get_prices(["SPY", "TLT", "QQQ"], start="2005-01-01")
+else:
+    px = synthetic_prices(n_days=3500, n_assets=3, seed=21)
+    px.columns = ["SPY", "TLT", "QQQ"]
+px.tail(3)
+```
+
+## T1 — Date slicing
+
+Slice `px` to exactly 2010-01-01 through 2019-12-31 (inclusive both ends).
+Assign to `px10`. How many rows? (Sanity: ~2516 for real data.)
+
+```python
+px10 = None  # YOUR CODE
+# print(len(px10))
+```
+
+## T2 — Daily simple returns
+
+Compute daily simple returns of all three assets for `px10`. Drop the
+first-row NaN deliberately, and in the markdown cell below, state *why* that
+NaN means something different from "missing data".
+
+```python
+rets10 = None  # YOUR CODE
+```
+
+**Why the NaN is different from missing data:**
+
+```python
+# Answer here:
+```
+
+## T3 — Annualized volatility
+
+One line per asset: annualized daily volatility (× √252).
+
+```python
+ann_vol = None  # YOUR CODE
+# print(ann_vol)
+```
+
+## T4 — Rolling volatility
+
+63-day rolling annualized volatility for SPY; plot it. Roughly when are the
+calmest and stormiest periods? (Real data: think 2011, 2020, 2022. Synthetic:
+find the clustering by eye.)
+
+```python
+# YOUR CODE
+```
+
+## T5 — Weekly returns, two ways
+
+Compute weekly returns **(a)** by resampling *prices* to `W-FRI` and taking
+`pct_change()`, and **(b)** by resampling the sum of daily *log* returns.
+Compare a handful of values: identical or not? Why?
+
+```python
+weekly_a = None  # (a)
+weekly_b = None  # (b)
+# YOUR CODE: compare (e.g., (weekly_a - weekly_b).abs().describe())
+```
+
+**Identical or not, and why:**
+
+```python
+# Answer here:
+```
+
+## T6 — Aligning assets with different histories
+
+Artificially shorten TLT: `late = px["TLT"].loc["2015-01-01":]` (a stock that
+listed later — the everyday panel situation). Compute daily returns of SPY
+(full history) and of `late`. Then build an inner-joined DataFrame and an
+outer-joined one; report row counts and NaNs per column in each. When would
+research demand the outer join despite the NaNs?
+
+```python
+late = px["TLT"].loc["2015-01-01":]
+inner = None  # YOUR CODE
+outer = None  # YOUR CODE
+```
+
+## T7 — Correlation
+
+Correlation of SPY vs TLT daily returns (inner join). Then compute the same
+correlation using only the 20 worst SPY days (by return). What do you notice?
+
+```python
+corr_all = None   # YOUR CODE
+corr_worst = None # YOUR CODE
+```
+
+## T8 — Growth of $1 and maximum drawdown
+
+From `rets10["SPY"]`: compute the growth of $1, then the maximum drawdown
+(largest peak-to-trough decline of the growth series). Plot the growth curve
+and shade (or mark) the drawdown trough date.
+
+```python
+growth = None   # YOUR CODE
+mdd = None      # YOUR CODE — most negative value of growth/cummax - 1
+```
+
+## T9 — Best and worst days
+
+SPY's five largest daily gains and five largest losses in the decade. Are the
+magnitudes symmetric?
+
+```python
+# YOUR CODE
+```
+
+## T10 — Resample to monthly
+
+Monthly *simple* returns for all three assets (resample prices to month-end,
+then returns). Report each asset's mean and std of monthly returns.
+
+```python
+monthly = None  # YOUR CODE
+```
+
+## T11 — Spot the bug
+
+The snippet below is a *backtest* of a 5-day momentum signal. It contains
+the bug introduced in lesson.md §3. Find it, explain it in one sentence, and
+write the fixed line.
+
+```python
+r = rets10[["SPY"]].copy()
+signal = r.rolling(5).mean()
+pnl_buggy = (signal * r).sum(axis=1)
+
+# YOUR CODE: explanation + the fixed line
+```
+
+## T12 — Reproduce a "data section" (timed: aim ≤ 15 min)
+
+A paper states: *"We study weekly returns of SPY and QQQ from 2012-01-01 to
+2021-12-31, computed from Friday closing prices."* Produce exactly that
+DataFrame, then report: number of observations, mean weekly return of each
+asset, and the correlation between them.
+
+```python
+study = None  # YOUR CODE
+```
+
+## Hints (ordered — take one at a time)
+
+- T5: one compounds growth factors, the other adds log growths; they agree
+  only to second order.
+- T8: `growth / growth.cummax() - 1`, then `.min()`.
+- T11: the signal uses day t's return *and* claims day t's return.

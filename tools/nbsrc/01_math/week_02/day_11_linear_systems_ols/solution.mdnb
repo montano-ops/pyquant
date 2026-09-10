@@ -1,0 +1,101 @@
+# Day 11 — Solution: OLS by Hand
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    px = get_prices(["SPY", "XLE", "TLT"], start="2015-01-01"); y_name = "XLE"
+else:
+    px = synthetic_prices(n_days=2200, n_assets=3, seed=61, corr=0.5)
+    px.columns = ["SPY", "XLE", "TLT"]; y_name = "XLE"
+rets = px.pct_change().dropna()
+```
+
+## E1 — ols_by_hand
+
+```python
+def ols_by_hand(X, y):
+    return np.linalg.solve(X.T @ X, X.T @ y)
+```
+
+## E2 — three ways, one answer
+
+```python
+import statsmodels.api as sm
+from scipy.optimize import minimize
+
+y = rets[y_name].values
+x = rets["SPY"].values
+X = np.column_stack([np.ones(len(y)), x])
+
+b_hand = ols_by_hand(X, y)
+res = minimize(lambda th: float(np.sum((y - X @ th) ** 2)), x0=[0.0, 1.0])
+b_sm = sm.OLS(y, X).fit().params
+
+print(f"hand:         alpha={b_hand[0]:.8f} beta={b_hand[1]:.6f}")
+print(f"minimize:     alpha={res.x[0]:.8f} beta={res.x[1]:.6f}")
+print(f"statsmodels:  alpha={b_sm[0]:.8f} beta={b_sm[1]:.6f}")
+```
+
+Identical. Same problem, same optimum: the normal equations are the *closed
+form of the floor* that day 5 found by walking.
+
+## E3 — the ones-column
+
+```python
+X_no1 = x.reshape(-1, 1)
+b_no1 = ols_by_hand(X_no1, y)
+print(f"with intercept: beta={b_hand[1]:.4f} | without: beta={b_no1[0]:.4f}")
+print(f"mean residual with: {(y - X @ b_hand).mean():.2e}")
+print(f"mean residual without: {(y - x * b_no1).mean():.4f} (nonzero!)")
+```
+
+Without the ones-column the line is forced through the origin: the slope
+absorbs the mean of y, residuals average to (mean of y − β·mean of x) ≠ 0,
+and both "alpha" and "beta" estimates are biased by whatever drift y has.
+The intercept's job is to absorb means so the slope measures *co-movement*.
+
+## E4 — the FF-style stack
+
+```python
+X3 = np.column_stack([np.ones(len(rets)), rets["SPY"], rets["TLT"]])
+b3 = ols_by_hand(X3, y)
+print(f"intercept {b3[0]:.6f} | SPY slope {b3[1]:.4f} | TLT slope {b3[2]:.4f}")
+```
+
+Interpretation: intercept = XLE's drift after both exposures; SPY slope =
+XLE's equity-market sensitivity *holding bonds fixed*; TLT slope = rate
+sensitivity *holding equities fixed*. The SPY slope differs from E2 because
+E2's bivariate regression let TLT's co-movement with SPY masquerade as
+market exposure — this is precisely what "controlling for" means, and why
+factor regressions (module 07) stack columns.
+
+## E5 — collinearity preview
+
+```python
+rng = np.random.default_rng(1)
+fake = rets["SPY"] + rng.normal(0, 1e-4, len(rets))
+Xc = np.column_stack([np.ones(len(rets)), rets["SPY"], fake])
+bc = ols_by_hand(Xc, y)
+print(f"SPY slope {bc[1]:.2f} | fake-factor slope {bc[2]:.2f}")
+```
+
+The two slopes explode with opposite signs and are meaningless *individually*
+even though the pair jointly "explains" the same variance as SPY alone:
+$X^\top X$ is nearly singular, and the solution is a near-coin-flip between
+nearly identical columns. **Phenomenon: multicollinearity** (module 06
+brings VIFs and the diagnostics; factor models live with it permanently —
+HML and value portfolios are famously correlated).

@@ -1,0 +1,105 @@
+# Day 3 — Solution: Exponents & Logs
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    px = get_prices(["SPY", "TLT"], start="2010-01-01"); names = ["SPY", "TLT"]
+else:
+    px = synthetic_prices(n_days=3000, n_assets=2, seed=17, drift_spread=0.0002)
+    px.columns = names = ["SPY", "TLT"]
+r = px.pct_change().dropna()
+```
+
+## E1 — the three operators
+
+```python
+rets = np.array([0.10, -0.10, 0.10])
+G = np.prod(1 + rets)
+arith = rets.mean()
+geo = G ** (1 / 3) - 1
+approx_drag = rets.var(ddof=1) / 2
+print(f"G={G:.6f}  arith={arith:.4%}  geo={geo:.4%}")
+print(f"actual gap={arith - geo:.4%}  approx drag={approx_drag:.4%}")
+```
+
+G = 1.089, arith = 3.33%, geo = 2.87%. Actual gap ≈ 0.47%, σ²/2 ≈ 0.50% —
+the approximation is excellent. **The point:** at 6.6% daily vol the drag
+is *half a percent per day* — a strategy with +3.3% expected daily return
+and this vol actually compounds at 2.9%.
+
+## E2 — the drag on real assets
+
+```python
+rows = []
+for name in names:
+    s = r[name]
+    rows.append({
+        "arith_ann": s.mean() * 252,
+        "cagr": (np.prod(1 + s) ** (252 / len(s))) - 1,
+        "gap": s.mean() * 252 - ((np.prod(1 + s) ** (252 / len(s))) - 1),
+        "sigma2_over_2": s.var(ddof=1) * 252 / 2,
+    })
+print(pd.DataFrame(rows, index=names).round(4))
+```
+
+SPY (≈15-18% vol) pays ~1.2–1.6%/yr of drag; TLT (similar vol) pays
+comparably. **The more volatile asset pays more drag** — exactly σ²/2,
+which is why the approximation column tracks the measured gap. For a 40%-vol
+single stock or 60%-vol commodity year, the drag is 8–18%/yr: compounding
+brutally punishes variance.
+
+## E3 — leverage meets the drag
+
+```python
+s = r["SPY"]
+for L in [1, 2, 3]:
+    lev = L * s
+    cagr = np.prod(1 + lev) ** (252 / len(lev)) - 1
+    print(f"L={L}: CAGR {cagr:+.2%}")
+```
+
+CAGR(L) ≈ L·μ − L²σ²/2: mean scales linearly, drag quadratically. For SPY
+(μ daily small), 2× roughly doubles the arithmetic expectation but
+*quadruples* the drag — and 3× starts eating the gain; beyond some L the
+CAGR peaks and then *falls*, eventually going negative at extreme leverage
+(the "volatility death spiral" — leveraged ETF decay is this formula
+operating daily).
+
+## E4 — which mean?
+
+```python
+monthly = 0.01
+honest_growth = (1 + monthly) ** 12 - 1
+print(f"honest annual growth: {honest_growth:.4%}")
+print(f"investor's arithmetic: {12 * monthly:.2%}")
+print(f"with 4% monthly vol, further drag: {0.04 ** 2 / 2 * 12:.3%}/yr")
+```
+
+Honest compounding of 1%/month = 12.68%, not 12% (compounding already adds
+0.68pp); with 4% monthly vol the realized CAGR sits another ~0.96pp lower.
+The investor implicitly assumed returns arrive *without variance* — and
+conflated an expectation (arithmetic) with a growth rate (geometric).
+
+## E5 — 40% best year, 6% CAGR
+
+Both are true because compounding is multiplicative: one ×1.40 multiplies a
+path whose other years include ×0.7s and ×0.85s; CAGR is the *constant*
+speed matching the endpoint — geometric means are dragged down by variance
+while the best year is the max of a noisy draw. A backtest reporting only
+the best year commits selection on the sample — the analog of orientation
+day 5's "champion trial": reporting the max of what a path produced while
+omitting what the whole path produced.

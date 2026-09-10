@@ -1,0 +1,74 @@
+# Day 1 — Exercise: Estimation & Standard Error
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    px = get_prices(["SPY", "TLT"], start="2010-01-01")
+else:
+    px = synthetic_prices(n_days=4000, n_assets=2, seed=44, corr=0.2)
+    px.columns = ["SPY", "TLT"]
+```
+
+## E1 (L3) — The SE of everything you'll ever report
+
+For SPY's returns: SE of the mean, of the SD, of skew, of kurtosis
+(formulas from module 03) — one table, each with n. Which estimate is
+most precisely known? Least?
+
+```python
+# YOUR CODE
+```
+
+## E2 (L4) — Paired vs independent, measured
+
+SE of the mean difference (SPY − TLT): (a) paired formula; (b)
+independent formula; (c) simulated truth (bootstrap the paired
+differences). The ratio is the pairing dividend — where does it come
+from?
+
+```python
+# YOUR CODE
+```
+
+## E3 (L5) — The honesty multiplier
+
+For SPY returns: compute the ACF of |r| up to lag 20 → n_eff =
+n/(1+2Σρ̂). Report the textbook SE of the mean × √(n/n_eff). How much
+does clustering widen your error bar on the mean? On the SD?
+
+```python
+# YOUR CODE
+```
+
+## E4 (L7) — Where could this mislead?
+
+A paper reports a strategy-vs-benchmark mean difference of 3.1bp with
+t = 2.2 using the INDEPENDENT SE, daily data, positions held 5 days
+(overlapping). Two distinct problems: name both, with directions.
+
+```python
+# Your answer:
+```
+
+## Hints
+
+- E2: ratio of variances = 1 − ρ² scaled... work it out: Var(A−B) =
+  sA²+sB²−2ρsAsB vs sA²+sB². The dividend is the covariance term.
+- E3: for the mean, returns' own ACF is what matters (≈0) — the |r| ACF
+  matters for the SD/Sharpe. Compute both, use the right one for each.

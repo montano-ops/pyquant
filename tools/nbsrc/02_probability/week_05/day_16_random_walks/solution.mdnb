@@ -1,0 +1,122 @@
+# Day 16 — Solution: Random Walks & Market Efficiency
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+plt.rcParams["figure.figsize"] = (10, 4)
+import os
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+```
+
+## E1 — grow your own random walk
+
+```python
+rng = np.random.default_rng(8)
+T = 2500
+ret = rng.normal(0.0004, 0.011, (3, T))
+logp = np.cumsum(ret, axis=1)
+plt.plot(logp.T); plt.title("3 simulated random walks (log price)"); plt.show()
+
+r = pd.Series(ret[0])
+acf = [r.autocorr(k) for k in range(1, 6)]
+print("path-1 return autocorrelations, lags 1-5:",
+      [f"{a:+.3f}" for a in acf])
+print(f"2/√T bands: ±{2/np.sqrt(T):.3f}")
+```
+
+**Expected reasoning.** The paths *look* like markets — trends, "support
+levels", dramatic drawdowns — all manufactured from iid noise. Lag
+autocorrelations land within ±0.04 of zero, but one or two of five
+usually poke past ±1 SE: at T=2,500, expect ~5% of lags to look
+"significant" by luck. **Chart-pattern vision is an overfitting organ;
+the bands are its corrective.**
+
+## E2 — the empirical signature
+
+```python
+if DATA_SOURCE == "real":
+    px = get_prices("SPY", start="2005-01-01")
+else:
+    px = synthetic_prices(n_days=4000, n_assets=1, seed=24)
+    px.columns = ["SPY"]
+r = px["SPY"].pct_change().dropna()
+T = len(r)
+lags = np.arange(1, 11)
+acf_r = [r.autocorr(k) for k in lags]
+acf_a = [r.abs().autocorr(k) for k in lags]
+plt.plot(lags, acf_r, "o-", label="returns")
+plt.plot(lags, acf_a, "s-", label="|returns|")
+plt.axhspan(-2/np.sqrt(T), 2/np.sqrt(T), color="gray", alpha=.3)
+plt.legend(); plt.xlabel("lag"); plt.ylabel("autocorrelation"); plt.show()
+print(f"SPY ρ1(returns)={acf_r[0]:+.3f}, ρ1(|r|)={acf_a[0]:+.3f}")
+```
+
+**The verdict sentence: direction ~unpredictable (lag-1 return
+autocorrelation ≈ −0.05 to +0.05, at or inside the band), volatility
+strongly predictable (|r| autocorrelation ≈ 0.1–0.25 at lag 1, decaying
+slowly, way outside the band).** Returns have no memory; risk has months
+of memory. Every options desk and vol fund is built on the right half of
+that sentence.
+
+## E3 — variance scaling
+
+```python
+if DATA_SOURCE == "real":
+    px2 = get_prices("SPY", start="2005-01-01")["SPY"]
+else:
+    px2 = px["SPY"]
+r2 = px2.pct_change().dropna()
+blocks = r2.groupby(np.arange(len(r2)) // 21).sum()      # non-overlapping 21d
+vr = blocks.var() / (21 * r2.var())
+sim = pd.Series(rng.normal(0.0004, 0.011, 4000))
+blocks_s = sim.groupby(np.arange(len(sim)) // 21).sum()
+vr_s = blocks_s.var() / (21 * sim.var())
+print(f"variance ratio: real {vr:.2f} vs simulated walk {vr_s:.2f}")
+```
+
+The simulated walk lands at ≈ 1.0 (as it must). Real SPY lands near 0.9–1.0
+(the exact value depends on period and treatment of overlapping data) —
+close to random-walk, with any persistent deviation being the Lo–
+MacKinlay variance-ratio object (module 08 builds the formal test).
+**The check costs five lines and distinguishes "no memory" from
+"memory in the second moment" — always run it before claiming
+predictability.**
+
+## E4 — the joint hypothesis (exemplar)
+
+Explanation A (skill): the strategy's signals identified genuinely
+mispriced securities; excess return is compensation for providing
+liquidity/bearing a priced risk. Explanation B (factor luck): the
+backtest period favored small-caps; the strategy is implicitly long
+small-cap exposure, and the "market" benchmark is the wrong null. **The
+separating test:** regress the strategy's returns on market, size, and
+other factor mimicking portfolios (module 07's alpha-vs-beta
+regression). If alpha ≈ 0 once exposures are included, it was B. Fama's
+point: you can never test "efficiency" per se — only efficiency
+*conditional on a model of fair return*.
+
+## E5 — attacking the nihilist claim
+
+Three cracks in "unpredictable ⇒ pointless": (1) **Volatility IS
+predictable** — E2's |r| structure means risk is forecastable, and
+option pricing, sizing, and vol-managed strategies (Moreira & Muir,
+module 10) monetize exactly that. (2) **Unpredictability of direction is
+consistent with positive expected returns** — a positive-drift random
+walk is unpredictable AND earns a risk premium; buy-and-hold is a bet on
+the drift, not on prediction. (3) **Cross-sectional predictability can
+exist even when time-series predictability doesn't** (relative value:
+long winners/short losers nets out market timing — module 07). The
+efficient-markets conclusion is "no *free* predictability", not "no
+return structure."

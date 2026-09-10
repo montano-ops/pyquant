@@ -1,0 +1,129 @@
+# Day 21 — Solution: Is a 55% Win Rate Luck?
+
+*Numbers first; the memo is the deliverable. Your memo should disagree
+with this exemplar in style, not in arithmetic.*
+
+## Part 1 — Exact
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+from scipy import stats
+import numpy as np
+
+n, k = 252, 138
+p_exact = 1 - stats.binom.cdf(k - 1, n, 0.5)
+print(f"P(≥{k} wins | p=0.5) = {p_exact:.4f}")
+```
+
+**≈ 0.074.** What it is: the probability that a *fair* coin-flip
+strategy shows this year's result or better. What it is not: the
+probability the trader is lucky — that requires a prior over traders
+(Bayes, day 3), and it is not evidence the true rate is 55% (that's a
+confidence/power statement, Part 4).
+
+## Part 2 — Approximation
+
+```python
+phat = k / n
+z = (phat - 0.5) / np.sqrt(0.25 / n)
+p_norm = 1 - stats.norm.cdf(z)
+print(f"z = {z:.3f}, normal one-sided p = {p_norm:.4f}")
+```
+
+z ≈ 1.51, p ≈ 0.065 — close to the exact 0.074 but not identical: the
+uncorrected normal slightly *understates* the tail. The continuity
+correction (compare 137.5, not 138) gives z ≈ 1.45, p ≈ 0.074 — gap
+closed. **Three tools, one number once the approximation is treated
+with respect: that convergence is the module in miniature.**
+
+## Part 3 — Simulation
+
+```python
+rng = np.random.default_rng(0)
+sims = (rng.random((100_000, n)) < 0.5).sum(axis=1)
+print(f"simulated P(≥138) = {(sims >= k).mean():.4f}")
+```
+
+≈ 0.064 — agreement across exact, asymptotic, and brute force to two
+significant figures. Any one of them alone could be misused; together
+they audit each other.
+
+## Part 4 — Power
+
+```python
+power = 1 - stats.binom.cdf(k - 1, n, 0.53)
+sub50 = stats.binom.cdf(125, n, 0.53)   # ≤125 wins = strictly sub-50%
+print(f"P(≥138 | p=0.53) = {power:.3f}; P(sub-50% year | p=0.53) = {sub50:.3f}")
+```
+
+**P(≥138 | p=0.53) ≈ 0.30** — even if the trader is genuinely skilled at
+0.53, this year's evidence appears less than one year in three. **P(a
+0.53 trader has a sub-50% year) ≈ 0.16** (≈ 0.21 if a dead-even
+126-win year counts). Read together: a single
+year is nearly uninformative in both directions — it rarely confirms
+real (modest) skill, and its absence rarely refutes it. "The record
+fails to prove luck" ≠ "the record proves skill"; "a good year didn't
+happen" ≠ "there's no edge." Absence of evidence is not evidence of
+absence — but it is also not a reason to size up.
+
+## Part 5 — Dependence caveat
+
+Win/loss indicators inherit regime dependence: streaks of losses in
+crisis regimes, streaks of wins in trends. Dependence (positive
+autocorrelation of the indicator) means n_eff < n, so the true SE is
+*wider* than √(p(1−p)/n) and the same z-score is *weaker* evidence —
+Part 1's 0.074 is an anti-conservative bound; the honest p-value is
+somewhat larger. You cannot compute the correction from win counts
+alone because the SE depends on the *sequence* (the autocorrelation
+structure), which the count discards: {W W L L W W L L...} and
+{W W W W...L L L L...} have identical counts and wildly different
+n_eff. You need the time series (n_eff = n/(1+2Σρ̂ₖ) — day 19), or a
+block-bootstrap null.
+
+## Part 6 — The client memo (exemplar)
+
+> **Re: 55% win rate — luck or skill?**
+>
+> **Finding.** The strategy won 138 of 252 trading days (54.8%). Under
+> a no-edge null, a year this good or better occurs about 7% of the
+> time (exact binomial; the normal approximation and a 100k-path
+> simulation agree to two significant figures). That is suggestive, not
+> conclusive — roughly one no-edge strategy in fourteen posts such a
+> year, and we have no count of how many strategies
+> were tried and discarded to produce this one.
+>
+> **Limits.** (1) Multiplicity: one year, one strategy, unknown search
+> breadth — the effective p-value is some multiple of 7%. (2)
+> Dependence: win days cluster with regimes; the true standard error
+> exceeds the iid value, weakening the result further. (3) Power: even
+> if the true win rate is 53%, a year this good appears only ~30% of the
+> time, and a genuinely skilled trader still has a sub-.500 year about
+> one year in six — one year cannot separate 50% from 53%.
+>
+> **What would settle it.** Pre-registered forward test: 3+ years of
+> out-of-sample daily records (n ≈ 750+), thresholds fixed in advance
+> (win rate > 50% + 2·SE with regime-robust SE; expectancy > 0 net of
+> costs), plus the strategy's full try-and-discard history.
+>
+> **Bottom line.** A 55% year is what luck delivers about once per
+> fourteen no-edge strategies — and what skill delivers only one year in
+> three. Until the forward test reports, treat the edge as unproven; size
+> positions so that being wrong is survivable.
+
+**Self-grade (rubric):** arithmetic (all three methods, one number) 3/3;
+interpretation (what p is/isn't) 2/3 if you never mentioned multiplicity
+— did you?; power and absence-of-evidence 3/3; dependence direction 3/3
+— full marks require *why the count alone can't fix it*; memo 5/6 —
+missing the bottom-line sizing sentence costs one.
+
+**Module grade:** if your three methods didn't agree to two significant
+figures, or your memo's numbers didn't match Part 1, the machine has a
+loose bolt — find it before module 03: it compounds.

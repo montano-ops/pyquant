@@ -1,0 +1,90 @@
+# Day 9 — Exercise: Is the Mean Stable?
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    px = get_prices("SPY", start="1993-01-01")
+else:
+    px = synthetic_prices(n_days=8000, n_assets=1, seed=38, mu=0.0003)
+    px.columns = ["SPY"]
+r = px["SPY"].pct_change().dropna()
+```
+
+## E1 (L4) — The rolling mean vs its own noise
+
+Plot the 63d rolling mean with the constant-μ ±2SE band (SE =
+s/√63 around the full-sample mean). What fraction of days fall outside
+the band? Under stability you'd expect ~5%. Verdict?
+
+```python
+# YOUR CODE
+```
+
+## E2 (L4) — The chunk test
+
+Ten equal chunks: chunk means, the observed SD of chunk means, and the
+SE each chunk should have. Ratio = instability index. Report it with
+the caveat from the lesson (overlapping information? none here — non-
+overlapping chunks, so the caveat is dependence WITHIN chunks).
+
+```python
+# YOUR CODE
+```
+
+## E3 (L5) — What would detection take?
+
+For a mean shift of −0.03%/day (from +0.04% to +0.01%) with σ=1.05%:
+how many post-shift days for the shift to clear 2 SE (of the
+difference)? Express in years. Then the same for detecting that vol
+DOUBLED (relative SE of s ≈ 1/√(2n); need the doubling to clear 2 SE —
+days?). Write the contrast sentence.
+
+```python
+# Your code + answer:
+```
+
+## E4 (L5) — The premium's fragility, bootstrapped
+
+Bootstrap 30-year annualized mean returns (10,000 resamples of 7,560
+days, compounded): report the 5th–95th percentile range. That range IS
+the uncertainty in "the equity premium" as an asset-allocation input.
+
+```python
+# YOUR CODE
+```
+
+## E5 (L7) — Where could this mislead?
+
+A CIO: "Our 30-year backtest anchors our expected return." Write the
+one-paragraph reply using E4's numbers and the drift/risk asymmetry.
+
+```python
+# Your answer:
+```
+
+## Hints
+
+- E1: if the outside-band fraction is 10–20%+, the constant-μ story is
+  in trouble *for this sample* — but remember the SE assumes
+  independence; vol clustering widens the TRUE band (n_eff < n), so
+  the honest conclusion is "consistent with noise once dependence is
+  priced in, and unprovable either way at this n."
+- E3: mean shift: n = (2σ/Δ)²·2 (two SEs of difference, two samples);
+  vol doubling: need 1/√(2n) small relative to the gap — solve.

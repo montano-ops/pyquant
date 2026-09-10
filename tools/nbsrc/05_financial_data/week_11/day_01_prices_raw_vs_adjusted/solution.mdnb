@@ -1,0 +1,101 @@
+# Day 1 — Solution: Raw vs Adjusted
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+```
+
+## E1 — the three wealths
+
+```python
+rng = np.random.default_rng(0)
+n = 500
+P = 100 * np.cumprod(1 + rng.normal(0.0003, 0.01, n))   # unit-consistent truth
+split_t, ratio = 299, 2.0
+div_idx = list(range(62, n, 63))                          # 7 ex-dates
+# dividend is per CURRENT share: it halves at the 2:1 split (payouts follow shares)
+D = {t: (1.0 if t < split_t else 0.5) for t in div_idx}
+
+raw = P.copy()
+raw[split_t:] = raw[split_t:] / ratio                     # as-traded: halved after 2:1
+
+# holder: dividends reinvested at ex-day close (provider convention)
+r_holder = []
+for t in range(1, n):
+    rr = P[t]/P[t-1] - 1
+    if t in D:
+        rr = (P[t]/P[t-1]) / (1 - D[t]/raw[t]) - 1       # D vs the AS-TRADED ex price
+    r_holder.append(rr)
+w_holder = np.prod(1 + np.array(r_holder))
+
+w_price_ok = P[-1]/P[0]                    # split-aware price-only (P is consistent)
+w_naive = raw[-1]/raw[0]                   # naive raw closes, ignores the split
+print(f"holder (dividends reinvested): {w_holder:.3f}x")
+print(f"price-only (split-aware):      {w_price_ok:.3f}x")
+print(f"naive raw (ignores split):     {w_naive:.3f}x")
+```
+
+**Expected reasoning.** naive ≈ half of price-only — the split alone
+manufactures a −50% phantom for anyone dividing raw closes without
+tracking shares. holder beats price-only by Π(1+D/raw_ex) ≈ +7%
+across 7 ex-dates (each a ~1% yield; the per-share dividend halves
+at the split because payouts follow share count). **Three wealths,
+three stories; only the first is a holder's truth.** (Cleanest
+practice: work in returns from the start — price return plus
+dividend terms — and never resample levels across events.)
+
+## E2 — the factor arithmetic
+
+```python
+factor = pd.Series(1.0, index=range(n))
+for t in sorted(div_idx + [split_t], reverse=True):      # newest first
+    if t == split_t:
+        factor.iloc[:t] /= ratio
+    else:
+        factor.iloc[:t] *= (1 - D[t]/raw[t])             # as-traded ex-day price
+adj = pd.Series(raw) * factor
+r_adj = adj.pct_change().dropna()
+r_true = pd.Series(r_holder, index=range(1, n))
+print(f"corr: {r_adj.corr(r_true):.6f}, max |diff|: {(r_adj - r_true).abs().max():.2e}")
+```
+
+**Expected:** corr = 1.000000, max diff ~1e−16 — the adjusted price is
+nothing but a construct that manufactures the holder's return stream.
+That is the entire concept, executed. Note the one place this world
+bites: the dividend is measured against the AS-TRADED ex price
+(dividends are per current share). Measure it against the
+unit-consistent P instead and the unit test screams ~1e−2 — which is
+exactly what unit tests on constructed worlds are for.
+
+## E3 — the real check (exemplar numbers, online mode)
+
+SPY since 1993: price-only ≈ 13–14× vs total ≈ 18–20× (window-
+dependent) → gap ≈ 130–170bp/yr vs historical average SPY yield
+~1.7%/yr. **The gap IS the yield, compounded** — the two numbers
+agree because they're the same mechanism. In synthetic mode with a
+2%/yr yield: expect ~2%/yr gap, growing in multiple terms over
+decades.
+
+## E4 — the phantom mean-reversion (exemplar)
+
+To a raw-close signal, every ex-div day of a $1-on-$40 stock is a
+−2.5% "crash" followed by an ordinary day — a manufactured
+mean-reversion pair. With 60–80 blue-chip ex-div dates per year
+across a 30-stock universe, the backtest harvests dozens of phantom
+wins per year at ~60–100% win rate on those dates alone. The 61% win
+rate is part dividend calendar, part alpha, indistinguishable in the
+aggregate. Fix: signals and returns on the adjusted (total-return)
+series, fills on raw with the dividend explicitly handled — and a
+report of strategy P&L split by ex-div vs ordinary days (a check that
+would have caught it in one table).

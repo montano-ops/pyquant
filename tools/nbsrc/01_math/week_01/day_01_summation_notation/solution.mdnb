@@ -1,0 +1,102 @@
+# Day 1 — Solution: Summation & Notation
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    px = get_prices("SPY", start="2015-01-01")
+else:
+    px = synthetic_prices(n_days=2500, n_assets=1, seed=3)
+    px.columns = ["SPY"]
+r = px["SPY"].pct_change().dropna()
+```
+
+## E1 — loops vs one-liners
+
+```python
+mean_loop = sum(r.iloc[t] for t in range(len(r))) / len(r)
+var_loop = sum((r.iloc[t] - mean_loop) ** 2 for t in range(len(r))) / (len(r) - 1)
+
+assert np.isclose(mean_loop, r.mean())
+assert np.isclose(var_loop, r.var(ddof=1))
+print(f"mean {mean_loop:.6f} | var {var_loop:.8f}")
+```
+
+**Expected reasoning.** The loop *is* the Σ; pandas just hides it. Writing
+both once is the whole point: from now on the one-liner is trustworthy
+because you've seen what it expands to.
+
+**The reverse direction** — the code sums *consecutive overlapping pairs* of
+log returns: $\sum_{t=2}^{T}\left[\ln(1+r_t) + \ln(1+r_{t-1})\right]$ —
+every log return except the first and last appears twice. Recognizing that
+"this isn't a standard formula" is exactly the skill: read the loop, not the
+intent.
+
+## E2 — ddof roulette
+
+```python
+print(f"pandas var (ddof=1): {r.var():.10f}")
+print(f"numpy default (ddof=0): {np.var(r.values):.10f}")
+print(f"ratio: {np.var(r.values) / r.var():.6f}")
+```
+
+The ratio is $(T-1)/T$: numpy's default divides by T (population), pandas by
+T−1 (sample, Bessel). **Downstream victims:** every volatility, covariance,
+Sharpe ratio, t-statistic, and R² downstream. Research standard: `ddof=1`.
+
+## E3 — the scale of things
+
+```python
+m, s = r.mean(), r.std()
+print(f"mean {m:.5f} | std {s:.5f} | ratio {m / s:.4f}")
+```
+
+Typical SPY: mean ≈ 0.0004, std ≈ 0.011 → ratio ≈ 0.04. **The average
+daily edge is ~4% of one day's noise.** This number is the course's
+constant companion (it becomes the daily Sharpe ratio in module 02, and the
+reason t-statistics need years of data in module 04).
+
+## E4 — JT93's formation return
+
+**(a)** The product of growth factors over months t−12 through t−2, minus
+one: the stock's total return over that window, dividend-reinvested.
+**(b)** j starts at 2 because month t−1 (the most recent month) is skipped —
+trading on it would buy *short-term reversal*, a different (and costlier)
+phenomenon that contaminates momentum (module 10 separates them properly).
+**(c)**
+
+```python
+def formation_return(monthly_returns_of_stock_i, t):
+    """monthly_returns: pd.Series indexed by month; t = current month."""
+    growth = 1.0
+    for j in range(2, 13):                      # j = 2..12
+        growth *= (1 + monthly_returns_of_stock_i.iloc[t - j])
+    return growth - 1
+```
+
+## E5 — two ways "average monthly return = 1.2%" misleads
+
+1. **Which mean?** An arithmetic mean of monthly returns is a statement
+   about expected *single-month* performance, not about compounded growth
+   (day 3: the drag). The investor's realized CAGR will sit below it by
+   roughly σ²/2 per period.
+2. **Whose data?** The sum runs over a specific sample: a chosen period
+   (cherry-picked?), a surviving universe (module 05). The Σ notation is
+   innocent; the index set is where bias lives.
+
+**Common mistake:** treating E5 as "advanced skepticism". Both points use
+only today's concepts — notation and sample.
