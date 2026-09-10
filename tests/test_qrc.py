@@ -101,7 +101,8 @@ def test_nbgen_roundtrip():
     nb = build_notebook(src)
     assert nb["nbformat"] == 4
     code_cells = [c for c in nb["cells"] if c["cell_type"] == "code"]
-    assert code_cells[0]["source"] == ["x = 1\n"]
+    # canonical nbformat: every line ends with \n except the last
+    assert code_cells[0]["source"] == ["x = 1"]
     assert all("id" in c for c in nb["cells"])
 
 
