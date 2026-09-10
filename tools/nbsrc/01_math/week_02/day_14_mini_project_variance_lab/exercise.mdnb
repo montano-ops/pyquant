@@ -1,0 +1,99 @@
+# Day 14 — Mini-Project: The Portfolio Variance Laboratory
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from scipy.optimize import minimize
+plt.rcParams["figure.figsize"] = (10, 4)
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+from qrc.universe import load_universe
+
+if DATA_SOURCE == "real":
+    tickers = load_universe("core_etfs")
+    px = get_prices(tickers, start="2010-01-01")
+else:
+    tickers = [f"S{i}" for i in range(12)]
+    px = synthetic_prices(n_days=3000, n_assets=12, seed=97, corr=0.4)
+    px.columns = tickers
+rets = px.pct_change().dropna()
+```
+
+## Part 1 — The diversification curve
+
+For n in [1, 2, 4, 6, 8, 10, 12] (cap at your universe size): 50 seeded
+random subsets per n; equal weights; average *annualized vol*. Overlay
+mean(variance)/n and mean(covariance) lines. Annotate where the curve
+reaches 95% of its floor distance.
+
+```python
+rng = np.random.default_rng(2024)
+# YOUR CODE: curve + theory lines + plot
+```
+
+## Part 2 — The correlation regime
+
+Define regime by the median of a 63-day rolling average cross-asset vol.
+Split dates into CALM and STORMY halves. Rebuild Σ per regime; rebuild the
+curve per regime (same subsets as Part 1 for comparability — why?). Report
+the calm vs stormy average covariance.
+
+```python
+# YOUR CODE
+```
+
+## Part 3 — Estimation noise vs perfect information
+
+Split time in half. On half A: min-var long-only weights ($w_A$). On half B
+evaluate: (i) vol of $w_A$; (ii) vol of 1/N; (iii) vol of min-var computed
+on B (the in-sample "cheat"). Report all three; compute the "value of
+perfect information" = (ii) − (iii), and "cost of estimation error" =
+(ii) − (i). Interpret.
+
+```python
+# YOUR CODE — label the cheat
+```
+
+## Write-up
+
+Answer in the markdown cells: (1) the flattening curve's message for "just
+add more stocks"; (2) what stormy-regime covariance does to calm-sized
+portfolios (quantify: % vol increase); (3) your Part-3 gaps, and the three
+reasons one split proves nothing (module 13 preview).
+
+```python
+# (1)
+# (2)
+# (3)
+```
+
+## Bias audit (mandatory, brief)
+
+- Survivorship: this universe is ___ — direction of bias on vol estimates?
+- Stationarity: Σ from 2010→now assumes ___ about 2026.
+- Multiplicity: you ran ___ subsets and ___ optimizations; what did the
+  "cheat" number teach you about in-sample optima?
+
+```python
+# Your audit:
+```
+
+## Hints
+
+- Part 1: theory floor lines use Σ from the SAME data as the curve.
+- Part 2: use the same subset draws across regimes (paired comparison).
+- Part 3: annualize consistently (×√252 at the end, once).

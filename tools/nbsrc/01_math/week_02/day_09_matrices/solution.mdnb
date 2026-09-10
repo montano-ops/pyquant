@@ -1,0 +1,90 @@
+# Day 9 — Solution: Matrices
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+plt.rcParams["figure.figsize"] = (10, 4)
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+from qrc.universe import load_universe
+
+if DATA_SOURCE == "real":
+    tickers = load_universe("core_etfs")[:8]
+    px = get_prices(tickers, start="2015-01-01")
+else:
+    tickers = [f"S{i}" for i in range(8)]
+    px = synthetic_prices(n_days=2000, n_assets=8, seed=31, corr=0.35)
+    px.columns = tickers
+rets = px.pct_change().dropna()
+```
+
+## E1 — shapes and slices
+
+```python
+print(rets.shape)
+row = rets.iloc[100]                 # cross-section: index = tickers
+col = rets.iloc[:, 2]                # time series: index = dates
+print(f"row 100 date: {rets.index[100].date()} | row index: assets; col index: dates")
+```
+
+## E2 — Σ, inspected
+
+```python
+Sigma = rets.cov()
+assert np.allclose(Sigma.values, Sigma.values.T)
+for i, t in enumerate(tickers):
+    assert np.isclose(Sigma.values[i, i], rets[t].var(ddof=1))
+
+plt.imshow(Sigma.values / np.outer(Sigma.values.diagonal()**.5, Sigma.values.diagonal()**.5),
+           cmap="RdBu_r", vmin=-1, vmax=1)
+plt.xticks(range(len(tickers)), tickers, rotation=90); plt.yticks(range(len(tickers)), tickers)
+plt.colorbar(); plt.title("correlation matrix (Σ normalized)")
+plt.show()
+```
+
+## E3 — the primitive, proven
+
+```python
+w = np.full(len(tickers), 1 / len(tickers))
+port = rets @ w
+
+rng = np.random.default_rng(0)
+for k in rng.integers(0, len(rets), 3):
+    assert np.isclose(port.iloc[k], rets.iloc[k] @ w)
+print("verified: (Xw)_t = row_t · w for random dates")
+```
+
+## E4 — the uncentered Gram matrix
+
+```python
+Z = rets.T @ rets
+print(Z.shape)
+```
+
+Entry (i, j) of Z = $\sum_t r_{i,t} r_{j,t}$: the *uncentered* sum of
+cross-products. It is "almost" (T−1)·Σ except for one thing: **no mean
+subtraction** (and no division). Σ = centered-Z/(T−1). With daily returns
+the means are tiny so the difference is small — but with monthly returns,
+prices, or low-frequency data, uncentered cross-products are badly biased,
+and any code path that skips centering is a silent bug. (This is why you
+never estimate covariance "by hand with X.T @ X" on raw data.)
+
+## E5 — two ways a 2015–2024 Σ misleads for 2025
+
+1. **Non-stationarity**: covariances are regime-dependent (day 14 measures
+   calm vs storm halves differing materially); a new regime makes the old Σ
+   wrong in level *and structure* (correlations rise together in crises).
+2. **Sample specificity / estimation error**: this Σ is one noisy draw; the
+   min-variance optimizer (day 12) will load onto its luckiest entries —
+   amplifying exactly the errors it should avoid.

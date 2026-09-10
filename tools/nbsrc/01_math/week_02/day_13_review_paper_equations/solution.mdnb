@@ -1,0 +1,88 @@
+# Day 13 — Solution: Decoding Real Equations
+
+## Drill 1 — E[R_p] = Σ w_i E[R_i]
+
+Objects: weights (vector, known), expected returns (unknowable truths —
+estimated by x̄). Operations: weighted sum of expectations. Words: "portfolio
+expected return is the weighted average of the assets' expected returns —
+risk plays no role at all." Loop: `sum(w[i] * mu[i] for i)`. Dimensions:
+(unitless × return) summed = return. **Assumption:** weights are known and
+fixed; expectation is a long-run center, NOT a promise — variance (day 10)
+decides what actually happens.
+
+## Drill 2 — beta, two ways
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np, pandas as pd
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    px = get_prices(["SPY", "XLE", "TLT"], start="2015-01-01")
+else:
+    px = synthetic_prices(n_days=2200, n_assets=3, seed=83, corr=0.5)
+    px.columns = ["SPY", "XLE", "TLT"]
+rets = px.pct_change().dropna()
+
+for name in ["XLE", "TLT"]:
+    beta_cov = rets[name].cov(rets["SPY"]) / rets["SPY"].var(ddof=1)
+    X = np.column_stack([np.ones(len(rets)), rets["SPY"].values])
+    beta_ols = np.linalg.solve(X.T @ X, X.T @ rets[name].values)[1]
+    print(f"{name}: beta via Cov/Var {beta_cov:.4f} | via OLS {beta_ols:.4f}")
+```
+
+Identical by construction: the OLS slope IS Cov(x,y)/Var(x). Objects: two
+series; words: "the fraction of the market's movements that asset shares,
+in units of its own return"; dimensions: return²/return² = unitless.
+
+## Drill 3 — the FF3 design matrix
+
+Columns of X: [1 (intercept), Mkt−RF (market excess return), SMB (small
+minus big), HML (high minus low book-to-market)]. Fitted values: (a, b, s, h)
+= (drift after risk adjustment, market loading, size loading, value
+loading). Not in the model: momentum — Carhart (1997) adds UMD as a fourth
+column; a momentum strategy evaluated only on FF3 would show "alpha" that is
+actually momentum loading (this exact mistake is why the factor model
+literature grew — module 07).
+
+## Drill 4 — overlapping portfolios
+
+Loop: for each month t, average the returns of J portfolios, each formed at
+a different past date but all "due" this month. Words: "this month's
+reported return is the average of J overlapping portfolios' returns this
+month." Consequence: adjacent months share J−1 of those portfolios, so the
+strategy's return series is *serially correlated by construction* even if
+monthly asset returns are independent — naive t-statistics on R_p,t are
+wrong (too small denominators); module 06's HAC (Newey–West) standard errors
+fix exactly this, and JT93's t-stats are computed with that machinery.
+
+## Drill 5 — skewness
+
+```python
+def skewness(r):
+    r = np.asarray(r)
+    m, s = r.mean(), r.std(ddof=1)
+    return np.mean(((r - m) / s) ** 3)
+
+for name in ["XLE", "TLT"]:
+    print(name, round(skewness(rets[name].values), 3))
+```
+
+Objects: a return series, its mean and std. Operations: cube of
+standardized deviations, averaged. Words: "the average of
+distance-from-mean, cubed — positive tail events vs negative tail events,
+with big distances dominating." Loop: trivial. Dimensions: standardized³ =
+unitless. Negative skew (typical for equities, strongly for short-vol
+strategies) = crash-magnet: frequent small gains, occasional huge losses.
+The cube is why one crash day can dominate the statistic (module 03.4
+formalizes; module 13 will show skew also corrupts naive Sharpe inference).

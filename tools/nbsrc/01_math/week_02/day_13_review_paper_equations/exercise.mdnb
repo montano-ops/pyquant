@@ -1,0 +1,93 @@
+# Day 13 — Exercise: Decode Five Real Equations
+
+Use the five-step method on each: objects → operations → words → loop →
+dimensions. Write all five steps for each drill (in the markdown cells);
+compute where asked.
+
+## Drill 1 — Expected portfolio return
+
+$$\mathbb{E}[R_p] = \sum_{i=1}^{N} w_i\, \mathbb{E}[R_i]$$
+
+What does it assume about the weights? What does expectation mean here — a
+promise?
+
+```python
+# Your five steps:
+```
+
+## Drill 2 — Beta
+
+$$\beta_i = \frac{\text{Cov}(R_i, R_m)}{\text{Var}(R_m)}$$
+
+Compute for XLE vs SPY and TLT vs SPY (or synthetic analogues). Connect to
+day 11: prove $\beta_i$ IS the OLS slope by fitting both.
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np, pandas as pd
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+if DATA_SOURCE == "real":
+    px = get_prices(["SPY", "XLE", "TLT"], start="2015-01-01")
+else:
+    px = synthetic_prices(n_days=2200, n_assets=3, seed=83, corr=0.5)
+    px.columns = ["SPY", "XLE", "TLT"]
+rets = px.pct_change().dropna()
+
+# YOUR CODE: beta by covariance formula AND by OLS, for both assets
+```
+
+## Drill 3 — The FF3 design matrix
+
+$R_{it} - R_{ft} = a_i + b_i(R_{mt}{-}R_{ft}) + s_i\,SMB_t + h_i\,HML_t + e_{it}$
+
+Write out (in words) what each column of X contains for a given asset, and
+what the fitted $(a, b, s, h)$ each mean. What is *not* in this model that
+momentum research would add (module 07)?
+
+```python
+# Your five steps:
+```
+
+## Drill 4 — Overlapping portfolios (JT93)
+
+$$R_{p,t} = \frac{1}{J}\sum_{j=1}^{J} R^{(j)}_{p,t}$$
+
+where $R^{(j)}$ is the return of the portfolio formed $j$ months ago. Write
+the loop; then explain the serial-correlation consequence for t-statistics
+computed on $R_{p,t}$ (and what fix module 06 will bring).
+
+```python
+# Your five steps + the explanation:
+```
+
+## Drill 5 — Sample skewness
+
+$$g = \frac{1}{T}\sum_{t=1}^{T}\left(\frac{r_t - \bar{r}}{s}\right)^3$$
+
+Implement it. Compute for your returns: positive or negative? What does the
+sign say about the distribution's tail asymmetry? (Module 03 formalizes.)
+
+```python
+def skewness(r):
+    # YOUR CODE
+    ...
+
+# print(skewness(rets["XLE"]), skewness(rets["TLT"]))
+```
+
+## Hints
+
+- Drill 2: beta = cov/var — with OLS slope = Σxy/Σxx after centering;
+  identical numerator/denominator.
+- Drill 5: note the T (not T−1) and the cube — outliers get enormous weight.

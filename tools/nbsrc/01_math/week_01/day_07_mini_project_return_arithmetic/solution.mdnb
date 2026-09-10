@@ -1,0 +1,127 @@
+# Day 7 — Solution: The Toolkit (exemplar)
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    px = get_prices(["SPY", "XLE"], start="2010-01-01"); names = ["SPY", "XLE"]
+else:
+    px = synthetic_prices(n_days=3000, n_assets=2, seed=41, drift_spread=0.0004)
+    px.columns = names = ["SPY", "XLE"]
+```
+
+## The toolkit
+
+```python
+def to_log(simple):
+    if (simple <= -1).any():
+        raise ValueError("impossible return <= -100%: check your data")
+    return np.log1p(simple)
+
+def to_simple(logret):
+    return np.expm1(logret)
+
+def total_growth(simple):
+    return float(np.prod(1 + simple))
+
+def cagr(simple, ppy=252):
+    years = len(simple) / ppy
+    return total_growth(simple) ** (1 / years) - 1
+
+def ann_vol(simple, ppy=252):
+    return float(simple.std(ddof=1) * np.sqrt(ppy))
+
+def drawdown(simple):
+    wealth = (1 + simple).cumprod()
+    return wealth / wealth.cummax() - 1
+```
+
+Design notes worth copying: `log1p`/`expm1` (precision near zero);
+loud failure on impossible returns (a −150% "return" is a data error, not a
+number to survive); `ddof=1` standardized; drawdown returns the *whole
+series*, not just the min — the path is the information.
+
+## The tests
+
+```python
+r = pd.Series([0.10, -0.05, 0.02])
+
+assert np.isclose(total_growth(r), 1.10 * 0.95 * 1.02)
+assert np.allclose(to_simple(to_log(r)), r)
+c = pd.Series([0.01] * 252)
+assert np.isclose(cagr(c), 1.01 ** 252 - 1)
+up = pd.Series([0.01] * 50)
+assert (drawdown(up) == 0).all()
+try:
+    to_log(pd.Series([-1.5])); raise AssertionError("should have raised")
+except ValueError:
+    print("all tests green")
+```
+
+**Common mistake the tests catch:** `cagr` via `simple.mean() * 252` —
+fails T3 (returns 2.52 = 252% vs the true 11.3x). If your CAGR test passed
+with the arithmetic version, your test was broken, not your math.
+
+## Q1 — the drag, measured
+
+```python
+rows = []
+for name in names:
+    s = px[name].pct_change().dropna()
+    rows.append({
+        "arith_ann": s.mean() * 252,
+        "cagr": cagr(s),
+        "gap": s.mean() * 252 - cagr(s),
+        "sigma2/2": s.var(ddof=1) * 252 / 2,
+    })
+print(pd.DataFrame(rows, index=names).round(4))
+```
+
+XLE (higher vol) pays more drag than SPY, and the σ²/2 column tracks the
+measured gap closely — the approximation is a working tool, not a curiosity.
+
+## Q2 — the frequency illusion
+
+```python
+for name in names:
+    s = px[name].pct_change().dropna()
+    monthly = px[name].resample("ME").last().pct_change().dropna()
+    cagr_monthly = total_growth(monthly) ** (12 / len(monthly)) - 1
+    print(f"{name}: CAGR(monthly comp) {cagr_monthly:.2%} "
+          f"vs mean_daily*252 {s.mean() * 252:.2%}")
+```
+
+The monthly-compounded CAGR and price-derived CAGR agree (they must — same
+growth process). The mean-daily×252 number exceeds both by roughly the
+annualized drag: it is an *expectation* statement, not a growth statement.
+**Corrupt table it produces:** any backtest summary reporting "annual
+return" as mean×252 for a high-vol strategy.
+
+## Q3 — volatility scaling
+
+```python
+for name in names:
+    s = px[name].pct_change().dropna()
+    monthly = px[name].resample("ME").last().pct_change().dropna()
+    print(f"{name}: ann vol daily {ann_vol(s):.2%} | monthly {ann_vol(monthly, ppy=12):.2%}")
+```
+
+They differ by a few tenths of a percent to a couple of percent: √-scaling
+assumes independent returns across days, but squared returns are
+autocorrelated (vol clustering — orientation day 7, Q4). When vol clusters,
+monthly realized variance ≠ 21× average daily variance. Module 09 makes
+this precise; today's takeaway: **state the frequency whenever you report a
+volatility.**

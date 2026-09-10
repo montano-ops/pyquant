@@ -1,0 +1,50 @@
+# Day 6 — Solution: Week-1 Spot-Check
+
+## 1. From memory (compare, don't just read)
+
+- (a) $s^2 = \frac{1}{T-1}\sum_{t=1}^{T}(r_t - \bar r)^2$
+- (b) $\bar r_{arith} - \bar r_{geo} \approx \sigma^2/2$
+- (c) $SSE(a,b) = \sum_{t=1}^{T}(y_t - a - bx_t)^2$
+- (d) returns compound ($(1+\bar r_d)^{252}-1$); volatility scales
+  ($\sigma_d\sqrt{252}$); variance scales linearly ($\sigma_d^2 \cdot 252$).
+
+## 2. One computation, end to end
+
+```python
+import numpy as np, pandas as pd
+from scipy.optimize import minimize
+rng = np.random.default_rng(2)
+r = pd.Series(rng.normal(0.0004, 0.011, 1000))
+
+mean_loop = sum(r.iloc[t] for t in range(len(r))) / len(r)
+var_loop = sum((r.iloc[t] - mean_loop) ** 2 for t in range(len(r))) / (len(r) - 1)
+geo = np.prod(1 + r) ** (1 / len(r)) - 1
+years = len(r) / 252
+cagr = np.prod(1 + r) ** (1 / years) - 1
+annvol = r.std() * np.sqrt(252)
+drag = r.var() * 252 / 2
+
+assert np.isclose(mean_loop, r.mean())
+assert np.isclose(var_loop, r.var())
+print(f"geo/day {geo:.5%} | CAGR {cagr:.2%} | ann vol {annvol:.2%} | drag/yr {drag:.2%}")
+```
+
+## 3. One fit
+
+```python
+from scipy.optimize import minimize
+n = 500
+x = rng.normal(0, 0.01, n)
+y = 0.0003 + 1.1 * x + rng.normal(0, 0.004, n)
+res = minimize(lambda th: float(np.sum((y - th[0] - th[1] * x) ** 2)), x0=[0, 1])
+a_hat, b_hat = res.x
+resid = y - a_hat - b_hat * x
+print(f"a={a_hat:.5f} b={b_hat:.3f}")
+print(f"mean resid {resid.mean():.2e} | corr(x, resid) {np.corrcoef(x, resid)[0,1]:.2e}")
+```
+
+Both hold at the optimum because OLS *chose* (a, b) to make them true:
+a absorbs any nonzero residual mean; the slope is chosen so the residual is
+uncorrelated with x. If either fails, you haven't found the optimum (or you
+regularized/modified the problem — module 06's ridge does exactly that,
+deliberately).

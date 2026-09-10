@@ -1,0 +1,86 @@
+# Day 4 — Exercise: Change and Sensitivity
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+plt.rcParams["figure.figsize"] = (10, 4)
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+```
+
+## E1 (L4) — Finite differences
+
+Implement `deriv(f, x, h)`. Verify against known derivatives:
+(a) $f(x)=x^2$ at x=3 (expect 6); (b) $f(x)=\ln(1+x)$ at x=0 (expect 1);
+(c) the payoff P&L(x) = 300·(x−62) at x=70 (expect 300).
+
+Then break it: try h = 1e-16 and h = 1. Report what happens and why.
+
+```python
+def deriv(f, x, h=1e-5):
+    # YOUR CODE
+    ...
+
+# checks (a), (b), (c)
+# then h-sensitivity experiment: plot error |numerical - exact| vs h (log-log), h from 1e-16 to 1
+```
+
+## E2 (L5) — Sensitivity of ending wealth
+
+From day 3's toolkit: `final_wealth(path) = prod(1+r)`. Compute, by finite
+difference, dW/d r_k for the *first* day and the *last* day of a 10-year
+daily path. Which is bigger? Interpret: "a basis point today is worth ___".
+
+```python
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    px = get_prices("SPY", start="2012-01-01")
+else:
+    px = synthetic_prices(n_days=2500, n_assets=1, seed=5)
+    px.columns = ["SPY"]
+r = px["SPY"].pct_change().dropna()
+# YOUR CODE
+```
+
+## E3 (L2/L6) — The sensitivity zoo
+
+Match each to "d(value)/d(driver)" and say its sign convention:
+delta, duration, beta, gradient, marginal P&L to a weight increase.
+
+Then: a bond fund says its duration is 6.2. Translate into a plain-English
+sensitivity statement.
+
+```python
+# Your answers:
+```
+
+## E4 (L7) — Convexity, felt
+
+Compute the 2-period outcome of: −20% then +25%; +25% then −20%; and the
+average of both orders. Explain why the *average across orders* of a
+symmetric ±move is a loss, and what this means for leveraged ETFs.
+
+```python
+# YOUR CODE + answer:
+```
+
+## Hints
+
+- E1: at very small h, f(x+h) − f(x) cancels to zero in floating point;
+  at large h you measure a chord. The sweet spot is 1e-4..1e-6.
+- E2: dW/dr_k = product of all growth factors AFTER day k.
+- E4: 0.8×1.25 = 1.0; 1.25×0.8 = 1.0 — hmm, compute carefully: which pairs
+  give exactly 1, and which give less? Try −20%/+20% and −33%/+50%.

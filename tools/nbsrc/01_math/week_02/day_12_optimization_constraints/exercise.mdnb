@@ -1,0 +1,98 @@
+# Day 12 — Exercise: Constrained Minimum Variance
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from scipy.optimize import minimize
+plt.rcParams["figure.figsize"] = (10, 4)
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+from qrc.universe import load_universe
+
+if DATA_SOURCE == "real":
+    tickers = load_universe("core_etfs")[:8]
+    px = get_prices(tickers, start="2015-01-01")
+else:
+    tickers = [f"S{i}" for i in range(8)]
+    px = synthetic_prices(n_days=2500, n_assets=8, seed=71, corr=0.3)
+    px.columns = tickers
+rets = px.pct_change().dropna()
+Sigma = rets.cov().values * 252        # ANNUALIZED covariance
+```
+
+## E1 (L4) — The solver
+
+Implement `min_var(Sigma, long_only)` per the lesson (equal-weight start,
+assert success, verify constraints after).
+
+```python
+def min_var(Sigma, long_only=True):
+    # YOUR CODE
+    ...
+
+w_lo = min_var(Sigma, long_only=True)
+w_unc = min_var(Sigma, long_only=False)
+```
+
+## E2 (L5) — Three regimes
+
+Report for both solutions: vol, sum(w), min(w), max(w), and the three
+largest weights (with tickers). Which assets does long-only pile into? What
+does the unconstrained solution want to do, and why is it operationally
+fictional?
+
+```python
+# YOUR CODE
+```
+
+## E3 (L5) — Stability, the honest question
+
+Split the sample in half. Solve min-var (long-only) on half A; measure its
+realized vol on half B. Compare with: (i) equal weights on half B; (ii)
+min-var computed ON half B (the in-sample "cheat"). Report three vols. How
+much of the "cheat" gap did your A-weights capture?
+
+```python
+# YOUR CODE — label the cheat clearly
+```
+
+## E4 (L6) — The leverage cap
+
+Add gross-exposure constraint $\sum|w_i| \le 1.6$ (long-only relaxed:
+shorts allowed up to the cap). Where does the solution land relative to
+E2's two extremes? What is the cap *buying* you operationally?
+
+```python
+# YOUR CODE + answer:
+```
+
+## E5 (L7) — Where could this mislead?
+
+Your A-weights beat 1/N on half B (or didn't). Either way: list the three
+reasons a single split cannot settle "optimization vs naive" (multiple
+testing? sample? regime?).
+
+```python
+# Your answer:
+```
+
+## Hints
+
+- E1: SLSQP with `constraints=[{"type": "eq", "fun": lambda w: w.sum() - 1}]`;
+  bounds [(0,1)]×n or [(−2,2)]×n.
+- E3: vol on half B = sqrt(w_A @ Sigma_B @ w_A), Sigma_B from half B only.
+- E4: scipy constraints can be inequalities: {"type": "ineq", "fun": lambda w: 1.6 - np.abs(w).sum()}.

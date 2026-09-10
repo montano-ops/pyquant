@@ -1,0 +1,92 @@
+# Day 9 — Exercise: Matrices
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+plt.rcParams["figure.figsize"] = (10, 4)
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+
+from qrc.data import get_prices, get_ff
+from qrc.synth import synthetic_prices
+from qrc.universe import load_universe
+
+if DATA_SOURCE == "real":
+    tickers = load_universe("core_etfs")[:8]
+    px = get_prices(tickers, start="2015-01-01")
+else:
+    tickers = [f"S{i}" for i in range(8)]
+    px = synthetic_prices(n_days=2000, n_assets=8, seed=31, corr=0.35)
+    px.columns = tickers
+rets = px.pct_change().dropna()
+```
+
+## E1 (L3) — Shapes and slices
+
+Report `rets.shape`. Extract (a) row 100 as a Series (a cross-section — what
+date is it?); (b) the 3rd *column* as a Series (a time series). Confirm
+`type(...)` is Series for both, and say in one line each what the index
+represents in (a) vs (b).
+
+```python
+# (a) row 100:
+# (b) 3rd column:
+```
+
+## E2 (L4) — The covariance matrix, inspected
+
+Compute `Sigma = rets.cov()`. Verify numerically: symmetric; diagonal
+equals each asset's variance (ddof=1). Then visualize with `plt.imshow`
+(labels!) and name the most/least co-moving pair.
+
+```python
+# YOUR CODE
+```
+
+## E3 (L4) — Matrix-vector as "every day's dot product"
+
+Compute `port = rets @ w` for equal weights. Verify by looping over 5
+random dates: `port.iloc[k]` equals the dot product of that date's row with
+w. (This IS the backtest primitive — you're proving you know what `@` does.)
+
+```python
+w = np.full(len(tickers), 1 / len(tickers))
+# YOUR CODE
+```
+
+## E4 (L5) — Transpose flips the question
+
+`rets.T` is (N × T): assets as rows. Compute the N×N matrix of... no wait —
+compute `Z = rets.T @ rets` and describe, in words, what entry (i, j) of Z
+contains (uncentered). Why is Z *almost* a covariance matrix, and what's
+missing?
+
+```python
+# YOUR CODE + answer:
+```
+
+## E5 (L7) — Where could this mislead?
+
+You compute Σ from 2015–2024 daily returns and use it to risk-size a
+portfolio for 2025. Name two distinct ways that could mislead.
+
+```python
+# Your answer:
+```
+
+## Hints
+
+- E1: `.iloc[100]` = row; `rets.iloc[:, 2]` or `rets[tickers[2]]` = column.
+- E4: uncentered cross-products — missing mean subtraction; that's why we
+  center first (Σ = centered Z / (T−1)).
