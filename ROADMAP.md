@@ -1,12 +1,13 @@
 # ROADMAP — The Complete Curriculum
 
 This is the canonical map of the course: every module, every week, every day,
-every paper, and how they connect. Modules 00–05 are fully authored (day
-folders contain lesson / exercise / solution / review). Modules 06–15 are
-fully **specified** at the day level below and in each module's README — their
-day folders are authored to the same standard progressively (see
-[AUTHORING.md](AUTHORING.md) for the exact template; the roadmap marks each
-week's status).
+every paper, and how they connect. Modules 00–03 are fully authored (day
+folders contain lesson / exercise / solution / review, all solution
+notebooks execute end-to-end). Modules 04–15 are fully **specified** at
+the day level below and in each module's README — their day folders are
+authored to the same standard progressively (see
+[AUTHORING.md](AUTHORING.md) for the exact template; this table marks
+each module's status).
 
 **Legend:** ✅ authored (complete day folders) · 🟨 partially authored · 🔲 specced (blueprint below + module README)
 
@@ -59,8 +60,8 @@ speed: the retrieval practice, spacing, and re-derivations ARE the course.
 | 01 | [Mathematical foundations](01_math/) | 1–2 | ✅ |
 | 02 | [Probability](02_probability/) | 3–5 | ✅ |
 | 03 | [Statistics](03_statistics/) | 6–7 | ✅ |
-| 04 | [Statistical inference](04_inference/) | 8–10 | 🟨 (week 8 authored; 9–10 specced) |
-| 05 | [Financial data](05_financial_data/) | 11–12 | 🟨 (week 11 authored; 12 specced) |
+| 04 | [Statistical inference](04_inference/) | 8–10 | 🔲 |
+| 05 | [Financial data](05_financial_data/) | 11–12 | 🔲 |
 | 06 | [Regression](06_regression/) | 13–15 | 🔲 |
 | 07 | [Asset pricing & factors](07_asset_pricing/) | 16–19 | 🔲 |
 | 08 | [Time-series analysis](08_time_series/) | 20–22 | 🔲 |
@@ -174,11 +175,10 @@ statistics, and know exactly how each one can mislead.*
 | 03.13 | Review | Retrieval + interleaved problems | — |
 | 03.14 | Module checkpoint: anatomy of a distribution | Full EDA mini-report on a chosen asset (first formal research report) | — |
 
-## Module 04 — Statistical inference (Weeks 8–10) 🟨
+## Module 04 — Statistical inference (Weeks 8–10) 🔲
 
 *Goal: answer "could this be luck?" with machinery you understand from the
-inside. Week 8 is authored; weeks 9–10 are specced below and in the module
-README (authored to the same template).*
+inside. Specced below and in the module README.*
 
 | Day | Title | What you do | Paper hook |
 |---|---|---|---|
@@ -204,7 +204,7 @@ README (authored to the same template).*
 | 04.20 | Review week cont. 🔲 | Mixed problem set across all inference tools | — |
 | 04.21 | Module checkpoint: does the effect survive? 🔲 | Full test + mini-report on a signal of your choosing | — |
 
-## Module 05 — Financial data (Weeks 11–12) 🟨
+## Module 05 — Financial data (Weeks 11–12) 🔲
 
 *Goal: build a clean, honest research panel and know exactly which biases it
 cannot escape. Week 11 is authored; week 12 is specced.*
