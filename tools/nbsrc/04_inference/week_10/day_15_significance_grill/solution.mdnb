@@ -1,0 +1,128 @@
+# Day 15 — Solution: The Significance Grill
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+from scipy import stats
+
+CLAIMS = {
+    "momentum 12-2":    dict(effect=900.0, t=3.2, n=300,   m=20,  overlap=5.0,  note="5-day holding, overlapping monthly"),
+    "monday gap":       dict(effect=20.0,  t=2.4, n=1300,  m=15,  overlap=1.0,  note="daily contrast, 1953-78"),
+    "low beta CAPM":    dict(effect=200.0, t=2.1, n=58,    m=8,   overlap=1.0,  note="annual portfolio returns"),
+}
+```
+
+## G1 — the SE and the CI
+
+```python
+print(f"{'claim':16s} {'SE':>8s} {'CI (bp/yr)':>18s} {'band/effect':>12s}")
+for name, c in CLAIMS.items():
+    se = abs(c["effect"]) / c["t"]
+    lo, hi = c["effect"] - 1.96*se, c["effect"] + 1.96*se
+    print(f"{name:16s} {se:8.1f} [{lo:9.1f},{hi:9.1f}]  {1.96/c['t']:12.2f}")
+```
+
+**Expected reasoning.** The band/effect column is 1.96/t: momentum
+0.61, Monday 0.82, low-beta 0.93. **Even the "strongest" claim is
+consistent with a premium 40% smaller than reported** — the first
+habit the grill installs: the CI, not the point estimate, is the
+number that funds decisions.
+
+## G2 — the detectable effect
+
+```python
+print(f"{'claim':16s} {'reported':>9s} {'detectable(80%)':>17s} {'above line?':>12s}")
+for name, c in CLAIMS.items():
+    se = abs(c["effect"]) / c["t"]
+    det = 2.8 * se
+    print(f"{name:16s} {c['effect']:9.1f} {det:17.1f} {str(c['effect'] > det):>12s}")
+```
+
+**Expected reasoning.** Momentum 900 vs 787: above the line, but
+*just* — a 600bp edge (still 7%/yr) would have been missed 40% of
+the time. Monday 20 vs 2.3: far above its detection line (the daily
+design is precise in bp — which is exactly why the family and cost
+questions, not power, kill it). Low-beta 200 vs 266: **below the
+line** — the design could not have reliably seen the effect it
+reported; the honest statement is "consistent with 0 to ~390bp."
+
+## G3 — the family
+
+```python
+print(f"{'claim':16s} {'p':>9s} {'E[FP]@m':>9s} {'Bonf thr':>9s} {'clears?':>8s} {'E[FP]@300':>10s}")
+for name, c in CLAIMS.items():
+    p = 2*stats.norm.sf(abs(c["t"]))
+    thr = stats.norm.ppf(1 - 0.05/(2*c["m"]))
+    print(f"{name:16s} {p:9.2e} {c['m']*p:9.3f} {thr:9.2f} {str(c['t'] > thr):>8s} {300*p:10.2f}")
+```
+
+**Expected reasoning.** Momentum: p = 0.0014; E[FP] at its 1993
+family (m=20) ≈ 0.03 — clears Bonferroni (threshold 2.97), barely:
+3.2 > 2.97 leaves almost no margin; at the 2013 zoo (m=300) the
+expectation is 0.42 — **the same result, two family sizes, two
+verdicts**: the threshold must be ex ante, not a retroactive property
+of the paper. Monday: p = 0.016; E[FP] ≈ 0.25 at m = 15; Bonferroni
+threshold 2.94: **fails** (2.4 < 2.94). Low beta: p = 0.037; E[FP]
+≈ 0.29 at m = 8; threshold 2.74: **fails**.
+
+## G4 — the overlap correction
+
+```python
+c = CLAIMS["momentum 12-2"]
+t_eff = c["t"] / np.sqrt(c["overlap"])
+se = abs(c["effect"]) / t_eff
+lo, hi = c["effect"] - 1.96*se, c["effect"] + 1.96*se
+p_eff = 2*stats.norm.sf(abs(t_eff))
+thr = stats.norm.ppf(1 - 0.05/(2*c["m"]))
+print(f"corrected t {t_eff:.2f} | CI [{lo:.0f},{hi:.0f}]bp | p {p_eff:.3f} | "
+      f"Bonferroni(m=20) thr {thr:.2f}: {'clears' if t_eff > thr else 'FAILS'}")
+```
+
+**Expected reasoning.** t 3.2 → 1.43; the CI blows from [343,1457]
+to roughly [−333, 2133]bp — the corrected claim is *statistically
+null*; Bonferroni fails decisively. One line: "if the reported t was
+not overlap-corrected, momentum at 1993's family size is not
+significant once the design is priced — which is exactly why modern
+re-runs report Newey–West-adjusted t's, and why the design question
+always comes first in the grill." (JT93's actual t's, re-estimated
+on modern samples with proper SEs, remain significant — the grill
+shows the *conditional* on which that conclusion rests.)
+
+## G5 — the mini-report (exemplar)
+
+**Survives, conditionally — momentum (claim 1).** Effect 900bp/yr
+(CI [343, 1457]), above its own 80%-power line (787bp), clearing the
+1993 family at Bonferroni. *But* two conditions carry the whole
+verdict: the t must be overlap-corrected (√5 factor — uncorrected it
+is null at the 1993 family size), and the family is the 2013 zoo,
+not the 1993 one, where the same t admits ~0.4 false discoveries.
+What would change its status: a pre-registered replication in a
+disjoint sample at corrected t ≥ 2, or a decay story that matches
+the cost/competition mechanism (the module 13 McLean–Pontiff lens).
+
+**Family-failed and cost-dead — Monday (claim 2).** Precise design
+(20bp gap, band 82% of effect) — power is not the issue. The 5-day
+× sub-period family (m ≈ 15) fails Bonferroni (2.4 < 2.77), and the
+tradability gate (04.12) is fatal independently: 2bp/Monday vs 10bp
+round trip. Status: a statistically marginal, economically null
+effect — the course's reference case for "the grill kills the trade,
+not the statistics."
+
+**A non-detect — low beta (claim 3).** Reported 200bp/yr is *below*
+the design's 266bp detection line: the study cannot distinguish a
+100bp CAPM failure from no failure, and the family (m = 8) expects
+0.3 false results at t = 2.1. Status: the result is consistent with
+effects from 0 to ~390bp/yr — it is evidence *against* the null
+hypothesis "the effect is 0 to 390bp," not evidence *for* 200bp.
+What would change its status: a longer sample (the effect is
+detectable above ~2.7%/yr with more years), or a test with more
+observations per year (quarterly portfolios — with the overlap
+correction of 04.13 applied).

@@ -1,0 +1,120 @@
+# Day 17 — Solution: Effect Size vs Tradability
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+
+STRATS = {
+    "momentum(mo)":   dict(mu_bp=900.0,  vol=0.12, events=12),
+    "reversal(wk)":   dict(mu_bp=520.0,  vol=0.20, events=52),
+    "factor_tilt(mo)":dict(mu_bp=300.0,  vol=0.08, events=12),
+}
+COSTS = (2, 5, 10, 20, 50)   # bp per round trip
+
+def net_sharpe(mu_bp, vol, events, c_bp):
+    # annualized net Sharpe (vol in decimal): (gross - cost) / vol
+    return (mu_bp - c_bp*events) / (vol*1e4)
+
+def death_cost_bp(mu_bp, events):
+    return mu_bp/events          # per-event gross = the zeroing cost
+
+def viable05_bp(mu_bp, vol, events):
+    return (mu_bp/1e4 - 0.5*vol)/events*1e4
+```
+
+## G1 — the gate, by hand
+
+```python
+# by hand: mu_e = 900bp/12 = 75bp/event; at c = 5bp: net_ann = 900 - 60
+# = 840bp/yr; annual Sharpe = 840/1200 = 0.70; death cost = 75bp/event
+s = STRATS["momentum(mo)"]
+print(f"check: {net_sharpe(s['mu_bp'], s['vol'], s['events'], 5):.3f} "
+      f"(hand: 0.70) | death {death_cost_bp(s['mu_bp'], s['events']):.1f}bp/event")
+```
+
+**Expected reasoning.** The hand arithmetic and the function agree
+(0.700). The pattern to internalize: **the gate's inputs are three
+numbers (gross, vol, events) and one assumption (cost)**; everything
+else is arithmetic you can do in your head, which is what makes it a
+*gate* instead of a model.
+
+## G2 — the cost grid
+
+```python
+rows = {}
+for name, s in STRATS.items():
+    row = {c: net_sharpe(s["mu_bp"], s["vol"], s["events"], c) for c in COSTS}
+    row["death"] = death_cost_bp(s["mu_bp"], s["events"])
+    row["v0.5"] = viable05_bp(s["mu_bp"], s["vol"], s["events"])
+    rows[name] = row
+df = pd.DataFrame(rows).T
+print(df.round(2).to_string())
+```
+
+**Expected reasoning.** momentum(mo): 0.73 → 0.25 across 2→50bp —
+positive at every cost (robust; death 75bp/event, 1.5× the top
+grid cost). reversal(wk): 0.21 → −1.04 across 2→50bp — alive at
+2bp, marginal at 5, **zero at 10bp** (death cost 520/52 = 10bp/RT
+exactly — the canonical reversal: real effect, 10bp kill-switch).
+factor_tilt(mo): 0.35 → −0.38 — alive to 20bp, dead at 50 (death
+25bp/event). **The grid's
+verdict is the strategy card's verdict:** reversal is a
+market-maker's strategy at 10bp; momentum survives the full grid;
+the tilt is only for venues with <20bp access.
+
+## G3 — the event-frequency trap
+
+```python
+for ev in [12, 252]:
+    sh = net_sharpe(900, 0.12, ev, 5)
+    print(f"events={ev:3d}: per-event gross {900/ev:6.2f}bp | net Sharpe@5bp {sh:+.2f} | "
+          f"death {900/ev:.2f}bp/event")
+```
+
+**Expected reasoning.** Monthly: 75bp/event gross, net Sharpe +0.70,
+death 75bp. Daily: 3.57bp/event gross vs the same 5bp cost → net
+−660bp/yr, Sharpe −0.30, **dead** (death 3.57bp). Same annual gross, same
+signal, different *rules* — opposite verdicts. The strategy is the
+signal **plus its rebalancing rule**; the rule is part of the
+hypothesis (and part of what you must pre-register).
+
+## G4 — the weekend re-gate
+
+```python
+for e, c in [(3, 10), (15, 10)]:
+    net_ann = (e - c)*52
+    print(f"e={e:2d}bp, c={c}bp: net {net_ann:+.0f}bp/yr | "
+          f"break-even e at c: {c}bp | break-even c at e: {e}bp")
+```
+
+**Expected reasoning.** (a) 3bp/10bp → −364bp/yr (reproduces 04.12).
+(b) Break-even is e = c, exactly — the gate's zero. (c) e = 15bp
+survives 10bp (net 260bp/yr) — but 15bp/Monday = 780bp/yr gross on
+an *index* is ~4–8× the realistic Monday gap: the 04.12 artifact
+warning applies with full force. A sample that clears the gate by 5×
+the literature's magnitude is a data problem until proven otherwise —
+the gate is necessary, not sufficient; the magnitude plausibility
+check (04.15's first row) is its partner.
+
+## G5 — the cost-gate paragraph (exemplar)
+
+"Momentum 12-2 on the research-50 panel: gross 940bp/yr, vol 11.8%/yr,
+rebalanced monthly (12 events). Cost assumption 8bp round trip
+(4bp/side: 1bp commission + 2bp half-spread + 1bp impact at 1% of
+ADV — the 12.8 model, at this size). Net at 8bp: 844bp/yr. Net
+Sharpe 0.78 at 2bp, 0.70 at 10bp, 0.59 at 20bp — positive across
+the grid. Death cost 78bp/event (≈ 10× the assumed cost): the
+strategy is robust to a 10× cost miss, not to an order of magnitude
+of turnover. The verdict changes if impact scales with size as
+planned in 12.10 — at 10× this book's ADV participation the cost
+assumption roughly doubles and the net Sharpe falls to ~0.63: still
+alive, no longer comfortable."

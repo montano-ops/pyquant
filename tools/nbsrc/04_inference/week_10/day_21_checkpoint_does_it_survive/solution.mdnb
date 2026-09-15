@@ -1,0 +1,139 @@
+# Day 21 — Solution: The Checkpoint Exemplar (Signal A: 3-1 momentum)
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+from scipy import stats
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+from qrc.universe import load_universe
+
+def momentum_spread(px, top=10, form_m=3, skip_m=1, hold_m=1):
+    """3-1 style monthly spread: one observation per holding month."""
+    pxc = px.dropna(how="all")
+    period = pxc.index.to_period("M")
+    ends = pd.Series(pxc.index, index=period).groupby(level=0).last().values
+    px_e = pxc.reindex(ends)
+    rows = []
+    for k in range(form_m + skip_m + hold_m, len(px_e)):
+        # formation (e_{k-5}..e_{k-2}), skip (e_{k-2}..e_{k-1}), hold (e_{k-1}..e_k)
+        form = px_e.iloc[k - skip_m - hold_m] / px_e.iloc[k - form_m - skip_m - hold_m] - 1.0
+        hold = px_e.iloc[k] / px_e.iloc[k - hold_m] - 1.0
+        ok = form.notna() & hold.notna()
+        f, h = form[ok], hold[ok]
+        if len(f) < 3 * top:
+            continue
+        rows.append((px_e.index[k - hold_m], h.nlargest(top).mean()
+                     - h.nsmallest(top).mean()))
+    return pd.Series(dict(rows)).sort_index()
+
+def audit(name, spread, m_family=1, cost_bp_rt=15.0, events=12):
+    n = len(spread)
+    mu, sd = spread.mean(), spread.std(ddof=1)
+    se = sd/np.sqrt(n)
+    t = mu/se
+    ci = (mu - 1.96*se, mu + 1.96*se)
+    detect = 2.8*se
+    thr = stats.norm.ppf(1 - 0.05/(2*max(m_family, 1)))
+    p = 2*stats.norm.sf(abs(t))
+    gross_ann = mu*12*1e4
+    vol_ann = sd*np.sqrt(12)
+    net_ann = gross_ann - cost_bp_rt*events
+    sh_net = net_ann/(vol_ann*1e4)
+    print(f"--- {name} ---")
+    print(f"n={n} | mean {mu*1e4:+.1f}bp/mo | SD {sd*1e4:.1f}bp/mo")
+    print(f"t {t:+.2f} | 95% CI [{ci[0]*1e4:+.1f},{ci[1]*1e4:+.1f}]bp/mo "
+          f"(band {1.96/abs(t) if t else float('nan'):.2f}x effect)")
+    print(f"detectable {detect*1e4:.0f}bp/mo ({detect*12*1e4:.0f}bp/yr) | "
+          f"reported above line: {mu > detect}")
+    print(f"family m={m_family}: Bonf thr {thr:.2f} -> "
+          f"{'clears' if abs(t) > thr else 'FAILS'} | p {p:.3f} | zoo(300) E[FP] {300*p:.2f}")
+    print(f"gate: gross {gross_ann:+.0f}bp/yr, vol {vol_ann*100:.1f}%, "
+          f"net {net_ann:+.0f}bp/yr @ {cost_bp_rt:.0f}bp RT, Sharpe {sh_net:+.2f}, "
+          f"death {gross_ann/events:.0f}bp/event")
+    blocks = np.array_split(spread.values, 3)
+    ts = [b.mean()/ (b.std(ddof=1)/np.sqrt(len(b))) for b in blocks]
+    print(f"stability (3 blocks): t = [{ts[0]:+.2f}, {ts[1]:+.2f}, {ts[2]:+.2f}]")
+    return dict(n=n, mu=mu, sd=sd, t=t, ci=ci, gross_ann=gross_ann,
+                net_ann=net_ann, sh_net=sh_net)
+```
+
+## Run both worlds
+
+```python
+if DATA_SOURCE == "real":
+    px_real = get_prices(load_universe("research50"), start="2010-01-01")
+    spread_real = momentum_spread(px_real)
+    a_real = audit(f"REAL 3-1 momentum (research50, {px_real.index.min().date()}–{px_real.index.max().date()})",
+                   spread_real, m_family=3, cost_bp_rt=15.0)
+spread_synth = momentum_spread(
+    synthetic_prices(n_days=2520, n_assets=50, seed=101, drift_spread=0.0))
+a_synth = audit("PLACEBO 3-1 momentum (50-asset null world, same design)",
+                spread_synth, m_family=3, cost_bp_rt=15.0)
+```
+
+**Expected reasoning (real world).** On research50 (2010–present,
+~120 monthly spread observations, survivorship-biased universe):
+the 3-1 momentum spread is usually positive (5–15bp/month), t
+typically 1.5–2.5, CI straddling or touching zero, below the
+detectable line, failing the declared family (m = 3 → threshold
+3.18), stability mixed across blocks, and the gate thin-to-dead at
+15bp RT (momentum on a 50-stock large-cap panel is a low-turnover,
+low-edge candidate — costs eat it). The *exact* numbers are this
+sample's; the structure is the deliverable.
+
+**Expected reasoning (placebo).** The null world: t near 0 (|t| <
+1.5 typical at n ≈ 115), CI wide around zero, one or two stability
+blocks "significant" by the lottery (3 blocks × 5% → ~14% chance of
+a block-level star), gate dead. **The placebo moment of the
+checkpoint:** the real-world number is read *against* this output —
+a real t of 2.0 when the null world produces t up to 1.5 is a
+*smaller* result than it looks; a real t of 2.8 is a *bigger* one.
+The audit's confidence is calibrated by the placebo, not by the
+t-table.
+
+## The rubric as written (the exemplar's report)
+
+**R1.** H0: mean monthly spread of top-10 vs bottom-10 (by
+3-month momentum, 1-month skip) = 0. H1: > 0. Tradable: long top-10,
+short bottom-10, monthly.
+**R2.** research50, adjusted closes, 2010–present, daily → monthly;
+no screens. Known bias: survivorship (today's list; delisted stocks
+absent — biases *against* finding effects that involve losing
+stocks, and the panel's large caps understate small-cap momentum).
+**R3.** One-sample t on the monthly spread; non-overlapping
+(holding = 1 month = sampling frequency) → no overlap flag; design
+stated before the number.
+**R4–R8.** From the audit output (numbers as printed).
+**R9.** The placebo output, as printed; the calibration sentence
+above.
+**R10 (exemplar verdict).** "3-1 momentum on research50: [read from
+your output — e.g.] a positive spread (Xbp/mo, CI [...]) with t
+Y, below the declared family's threshold (3.18 at m = 3), below
+its own detectable line, stability mixed, net of 15bp round trip
+[marginal/dead]. Against the null world (placebo t Z, block stars
+by lottery), this is [a real-but-untradable / not-distinguishable
+from noise] effect. Conditions that would change the verdict:
+(1) a pre-registered disjoint sample (different universe or period)
+at corrected t ≥ 3.2; (2) a cost measurement at intended size
+confirming <10bp RT *and* a turnover profile keeping 12 events/yr.
+Two module days doing the work here: 04.13 (design/overlap — why
+the t is honest) and 04.11 (family — why the t is not enough)."
+
+## Module 04 complete
+
+The two sentences you leave with: **every claim is (estimate, SE,
+family); every strategy is (edge, cost, turnover).** Modules 06–15
+are these sentences at scale.

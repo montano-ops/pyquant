@@ -1,0 +1,74 @@
+# Day 18 — Exercise: Week 10 Mixed Set
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+from scipy import stats
+```
+
+## X1 (L4) — Grill a fresh claim
+
+Claim: "Characteristic Y: 220bp/yr, t = 2.9, n = 900 quarterly
+portfolios, family of 12, non-overlapping." Run the four grill
+questions: (1) SE + CI in bp/yr; (2) detectable effect — above or
+below the line? (3) family: Bonferroni threshold at m = 12, verdict;
+(4) design: any flags? One-paragraph verdict.
+
+```python
+# YOUR CODE
+```
+
+## X2 (L5) — Decode a fresh table
+
+Table (fictional), 4 rows, t's = [2.2, 2.6, 3.4, 1.8], coefficients
+= [8, 15, 40, 5] bp/quarter. (a) Decode each row (SE, CI, annualized
+CI, star). (b) The table's own family: Bonferroni survivors; BH
+survivors. (c) The unstarred row with the tightest band: the honest-
+null sentence.
+
+```python
+# YOUR CODE
+```
+
+## X3 (L4) — Gate a fresh strategy
+
+Strategy: gross 180bp/yr, vol 9%/yr, 4 events/yr (quarterly
+rebalance), cost 15bp/RT (illiquid names). (a) Net Sharpe. (b)
+Death cost. (c) The one-sentence verdict, and the cost/turnover
+change that would flip it.
+
+```python
+# YOUR CODE
+```
+
+## X4 (L6) — The full audit, one paragraph
+
+Combine: a paper reports "Y (from X1) survives all robustness
+checks, t = 2.9." Your colleague wants to trade it. Write the
+five-sentence response that carries the grill's verdict, the gate's
+numbers (at 15bp/RT, quarterly), and the two conditions under which
+you'd fund it.
+
+```python
+# Your answer:
+```
+
+## Hints
+
+- X1: SE = 220/2.9; detectable = 2.8·SE; Bonferroni m=12 →
+  threshold ≈ 2.87 (the 2.9 clears it by a hair).
+- X2: band/effect = 1.96/|t|; the tightest-band unstarred row is the
+  one with the largest |t| among the unstarred.
+- X3: 4 events × 15bp = 60bp cost; gross 180bp → net 120bp on 900bp
+  vol.

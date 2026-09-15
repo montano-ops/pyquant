@@ -1,0 +1,93 @@
+# Day 19 — Solution: The Self-Test (Modules 01–04)
+
+## Part 1 — the numeric answers
+
+```python
+import numpy as np
+print(f"se_rho    = 1/sqrt(1000)      = {1/np.sqrt(1000):.5g}")
+print(f"death_bp  = 600/12            = {600/12:.5g}")
+print(f"bartlett  = sqrt(5)           = {np.sqrt(5):.5g}")
+print(f"se_paired = 0.008/sqrt(400)   = {0.008/np.sqrt(400):.5g}")
+print(f"bh_p1     = 1*0.05/100        = {1*0.05/100:.5g}")
+```
+
+**Expected reasoning.** (se_rho) at ρ=0 the correlation's SE is
+1/√T — the module 02.8 row, now a reflex. (death_bp) the gate's
+core: gross per event. (bartlett) √H for the overlap triangle —
+the 04.13 identity. (se_paired) SD of the difference / √n — the
+04.8 design in one line. (bh_p1) the rank-1 BH threshold q/m —
+nothing smaller survives.
+
+## Part 2 — the word answers (exemplars)
+
+**A1.** wᵀΣw is the portfolio variance (in weights, the covariance
+matrix). The off-diagonals are the diversification story because
+Σw = 1 makes the diagonal (own variances) unavoidable — the only
+free variable is the *mix*, i.e., the cross terms; diversification
+works only if the off-diagonals are small (low/negative ρ), and the
+whole benefit of N assets is in them.
+
+**A2.** E[r_p] = wᵀμ — linear, no cross terms, because expectation
+is linear. Var(r_p) = wᵀΣw has cross terms because *variation*
+depends on how the components co-move: a common market shock that
+hits every asset simultaneously adds co-movement variance that the
+mean never sees.
+
+**A4.** Skewness: the asymmetry — negative skew means left tail
+heavier (crash asymmetry in equities); getting it wrong sizes
+crash exposure (a symmetric model under-prices the tail you will
+actually live in). Excess kurtosis: tail weight beyond normal —
+getting it wrong makes your SEs, VaR, and backtest confidence all
+overstated (04.1's caveat #1): the fat-tail miss is a *statistical*
+error, the skew miss is a *position* error.
+
+**A5.** Rolling vol is the vol estimate because vol is (by the
+stylized facts) the persistent, clustered quantity — the rolling
+window is its measurement. It cannot see: the *level* shift ahead
+(regime change inside the window), the tail (it averages squared
+deviations — the 99th-percentile day barely registers), and the
+*direction* (vol knows how much, never which way — 03.10's
+"what vol does NOT tell you").
+
+**A6.** The p-value: under H₀, the probability of obtaining a
+test statistic as extreme as, or more extreme than, the one
+observed. Not "the probability H₀ is true," not "the probability
+the result is a fluke" — a statement about data, conditional on a
+null.
+
+**A7.** Consistency: the estimator converges to the true parameter
+as n → ∞ (more data eventually fixes the error). Unbiasedness:
+E[estimator] = parameter at *every* n (no systematic tilt, finite
+sample). An estimator can be consistent but biased at small n
+(winsorized mean), or unbiased but inconsistent (a stranger: the
+midpoint of the first and last observation is unbiased for μ of an
+iid sample… and inconsistent).
+
+**A9.** The bootstrap resamples *values* (the sample, with
+replacement) and estimates the statistic's *sampling distribution*
+under "sample ≈ population." Block length b's job: keep dependence
+of horizon ≤ b alive inside resampled blocks, so clustered
+statistics (vol-based ones) get the honest, wider SE.
+
+## Part 3 — the re-derivation (Bartlett, from memory)
+
+Stationary mean: Var(x̄) = (σ²/n)·(1 + 2Σ_{k≥1} ρ_k(1 − k/n)) ≈
+(σ²/n)(1 + 2Σρ_k) for large n. Overlapping H-day sums of iid daily
+returns: consecutive sums k apart share H − k of H days, so
+ρ_k = (H−k)/H for k = 1…H−1, and 0 beyond. Then
+1 + 2Σ_{k=1}^{H−1}(H−k)/H = 1 + (2/H)·(H−1)H/2 = 1 + (H−1) = H.
+**SE multiplier = √H.** The whole 04.13 correction in four lines:
+the overlap triangle sums to H−1, and the square root is the SE.
+
+## Part 4 — the triage (format exemplar)
+
+| Miss | Type | Fix | Re-learn |
+|---|---|---|---|
+| A11 Bartlett | arithmetic | I wrote √(H−1); recompute 1+2Σ(H−k)/H by hand twice | +1 week (day 04.21) |
+| A4 skew | concept | I had the trading consequence backwards | re-read 03.4 §5, self-quiz |
+| Part 1 se_rho | careless | rushed the √1000 | the checklist fixes it |
+
+The triage's rule: **concept errors get re-learning, arithmetic
+errors get recomputation, careless errors get checklists.** More
+reading never fixes arithmetic; more arithmetic never fixes
+concept.

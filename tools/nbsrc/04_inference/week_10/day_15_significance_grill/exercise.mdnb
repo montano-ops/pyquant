@@ -1,0 +1,88 @@
+# Day 15 — Exercise: The Significance Grill
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+from scipy import stats
+
+CLAIMS = {
+    "momentum 12-2":    dict(effect=900.0, t=3.2, n=300,   m=20,  overlap=5.0,  note="5-day holding, overlapping monthly"),
+    "monday gap":       dict(effect=20.0,  t=2.4, n=1300,  m=15,  overlap=1.0,  note="daily contrast, 1953-78"),
+    "low beta CAPM":    dict(effect=200.0, t=2.1, n=58,    m=8,   overlap=1.0,  note="annual portfolio returns"),
+}   # effect in bp/year
+```
+
+## G1 (L4) — The SE and the CI
+
+For each claim: back out SE = |effect|/t, build the 95% CI in
+bp/year, and report the CI's width as a fraction of the effect
+(the precision ratio: how wide is the band relative to the claim?).
+
+```python
+# YOUR CODE
+```
+
+## G2 (L4) — The detectable effect
+
+For each claim: the effect size this design detects at 80% power
+(2.8 × SE). Is the reported effect above or below its own detection
+line? Compute, for each claim, the *true* effect that would give
+t = 2.0 with 80% power (the minimum tradable-effect size).
+
+```python
+# YOUR CODE
+```
+
+## G3 (L5) — The family
+
+For each claim with its stated family size m: (a) expected false
+discoveries at the claim's own t (m × two-sided p); (b) the
+Bonferroni threshold t and whether the claim clears it; (c) the HLZ
+version: same t against a zoo of m = 300.
+
+```python
+# YOUR CODE
+```
+
+## G4 (L5) — The overlap correction
+
+Apply the 04.13 Bartlett logic to the momentum claim (√5): the
+corrected t, its CI on the effect, and the family verdict at m = 20
+with the corrected t. Then state, in one line, what the corrected
+numbers do to the claim's status.
+
+```python
+# YOUR CODE
+```
+
+## G5 (L6) — The verdict table and mini-report
+
+Assemble the grill table (claim × 4 rows: effect/CI, detectable,
+family, design) and write the three-paragraph mini-report: survives /
+survives conditionally / doesn't — with what each would need to
+change its status.
+
+```python
+# Your answer:
+```
+
+## Hints
+
+- G1: precision ratio = 1.96·SE/|effect| = 1.96/t — the CI width
+  relative to the effect depends only on t, not on n. (t = 2.4 →
+  band ≈ 82% of the effect; t = 3.2 → 61%.)
+- G2: detectable = 2.8 × SE. "Minimum tradable" asks the same
+  question with t = 2.0 and power 0.8: 2.8·SE again — the line is
+  the line.
+- G3: two-sided p at large n: 2·(1−Φ(|t|)). The m=300 row is the
+  HLZ arithmetic; watch momentum's 0.03 become 0.4.

@@ -1,0 +1,134 @@
+# Day 16 — Solution: Reading Inference in Papers
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+from scipy import stats
+
+TABLE = pd.DataFrame({
+    "characteristic": ["Momentum (12-1)", "Size", "Book/Market", "Volatility", "Turnover"],
+    "coef_bp_mo": [55.0, -12.0, 18.0, -9.0, -22.0],
+    "t": [3.06, -1.33, 2.57, -2.25, -2.75],
+})
+```
+
+## T1 — the decode, row by row
+
+```python
+d = TABLE.copy()
+d["SE"] = d["coef_bp_mo"] / d["t"]
+d["CI_lo"] = d["coef_bp_mo"] - 1.96*d["SE"]
+d["CI_hi"] = d["coef_bp_mo"] + 1.96*d["SE"]
+d["band/eff"] = 1.96/d["t"].abs()
+d["ann_lo"] = d["CI_lo"]*12; d["ann_hi"] = d["CI_hi"]*12
+d["star"] = np.where(d["t"].abs() > 1.96, "*", " ")
+print(d[["characteristic", "coef_bp_mo", "t", "SE", "CI_lo", "CI_hi",
+         "band/eff", "ann_lo", "ann_hi", "star"]].round(1).to_string(index=False))
+```
+
+**Expected reasoning.** Momentum [20.1, 89.9]bp/mo (241–1079bp/yr),
+band 0.64; Size [−29.0, 5.0], 1.47; BM [3.6, 32.4], 0.76; Volatility
+[−22.9, 4.9], 0.87; Turnover [−43.5, −0.5], 0.71. Before the family:
+momentum, BM, volatility, and turnover all "work" at raw 5% — four
+stars. The decode already did its job: the band column is the first
+doubt (Size's unstarred row has a *tight* band — it excludes a lot).
+
+## T2 — the table is its own family
+
+```python
+ts = d["t"].abs().values
+p = 2*stats.norm.sf(ts)
+m = len(ts)
+thr = stats.norm.ppf(1 - 0.05/(2*m))
+bonf = ts > thr
+print(f"Bonferroni(m=5) threshold {thr:.2f}: clearers = "
+      f"{d['characteristic'].values[bonf].tolist()}")
+p_sorted = np.sort(p); ks = np.arange(1, m+1)
+k = np.max(ks[p_sorted <= ks*0.05/m]) if (p_sorted <= ks*0.05/m).any() else 0
+print(f"BH@0.05 rejects {k}   expected false stars at raw 5%: {m*0.05:.2f}")
+```
+
+**Expected reasoning.** Threshold 2.97: only Momentum (3.06) clears —
+by 0.09. BH: only Momentum's p (0.0022) is under its rank threshold;
+k = 1. Expected false stars at raw 5% among 5 tests: 0.25 — so a
+table showing 4 stars has ~15% of its mass from the lottery (4
+observed vs 3.75 "true + expected"… more precisely: if only momentum
+is real, the *expected* star count is 1 + 4×0.05 = 1.2, and 4 is
+~3 false). One sentence: "of the four stars, only the momentum star
+survives the table's own family; the other three are what 5 tests at
+5% produce when one of the five is real."
+
+## T3 — the unstarred row as evidence
+
+```python
+se_s = 12.0/1.33
+lo, hi = -12.0 - 1.96*se_s, -12.0 + 1.96*se_s
+print(f"Size CI: [{lo:.1f}, {hi:.1f}] bp/mo  =  [{lo*12:.0f}, {hi*12:.0f}] bp/yr")
+```
+
+**Expected reasoning.** CI [−29.0, 5.0]bp/mo = [−348, 60]bp/yr.
+Ruled out at 95%: positive size premiums above ~5bp/mo (60bp/yr)
+*and* negative premiums below ~29bp/mo (348bp/yr) — a tight null.
+The honest-null sentence: "In this specification and sample, size
+does not carry a detectable premium: effects above ~60bp/yr or below
+~−350bp/yr are excluded at 95% — the null is precise, not empty."
+That sentence, copy-pasteable into a report, is what the unstarred
+row is worth.
+
+## T4 — the checklist on the real excerpt
+
+```python
+checklist = pd.DataFrame({
+    "Q": list(range(1, 11)),
+    "question": ["unit of observation?", "null?", "design?", "SE flavor?",
+                 "sample?", "family?", "money units?", "SE matches design?",
+                 "economic story?", "what would kill it?"],
+    "stated": ["monthly decile portfolio returns", "each decile = 0 (and W−L = 0)",
+               "12-mo formation, 1-mo skip, 5-day holding, OVERLAPPING monthly",
+               "not stated in Table I (modern re-runs use NW/HAC)",
+               "1964–89, NYSE AM+NYSE, ~500 stocks, screen at formation date",
+               "NOT stated (10 deciles + spread; the table IS the family)",
+               "W−L ≈ 90bp/month ≈ 1080bp/yr gross",
+               "FLAG: 5-day overlap on monthly sampling -> sqrt(5) question",
+               "slow information diffusion / underreaction (testable: skip month!)",
+               "costs (turnover ~ 100%+/month of the spread's capital), later-sample decay"],
+})
+print(checklist.to_string(index=False))
+```
+
+**Expected reasoning.** The two flags do the work: (4) the SE flavor
+is unstated — the 3.0 needs the overlap correction (√5 → honest t ≈
+1.35 *if uncorrected*; JT93's actual reported t's in re-estimates
+survive proper SEs, which is the conditional the decode states);
+(6) the family is the 10 deciles + spread + horizons — the monotonic
+decile pattern is evidence *beyond* one t, and that is what the grill
+credits. The skip month (12-1 not 12-0) is the mechanism's own
+testable prediction stated in the design — question 9 answered by
+construction.
+
+## T5 — the author email (exemplar)
+
+"(1) Design: is Column 3's unit the stock-day, and is the signal
+rebalanced daily on monthly data — i.e., do consecutive observations
+share holding days, and if so how many? (2) SE flavor: are the
+reported t's iid OLS, and if the observations overlap or are
+clustered by firm/date, what is the corrected t with that structure
+priced? (3) Family: the supplementary material tests 12 variants —
+if the family is 12 (or 12 × columns), what is Column 3's t against
+the Bonferroni/BH threshold for that family, and which variant was
+selected on? (4) Kill test: what single subsample, cost assumption,
+or overlapping-design correction would take Column 3's t below 2, and
+does the paper run it?"
+
+The discipline: each question names the *number* it forces (the
+overlap factor, the corrected t, the family threshold, the kill-t) —
+a shrug cannot answer a number.

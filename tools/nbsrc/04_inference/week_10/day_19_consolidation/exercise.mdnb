@@ -1,0 +1,126 @@
+# Day 19 — Exercise: The Self-Test (Modules 01–04)
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+from scipy import stats
+```
+
+## Part 1 — the numeric self-check (90s each, no notes)
+
+Fill in the answers (the code checks them; if one fails, it goes in
+the error log with the *why*).
+
+```python
+answers = {
+    # A3: SE of sample correlation at rho=0, T=1000 (1 decimal place, as 1/sqrt(T))
+    "se_rho": None,                 # e.g. 0.032
+    # A12 / deriv 4: death cost per event for gross 600bp/yr, 12 events/yr
+    "death_bp": None,               # e.g. 50.0
+    # A11: Bartlett factor (SE multiplier) for H=5 overlap
+    "bartlett": None,               # e.g. 2.24
+    # A8: paired SE of the mean difference: sd(diff)=0.8%, n=400 -> as a decimal
+    "se_paired": None,              # e.g. 0.0004
+    # A10: BH: m=100, q=0.05, the smallest p-value that CAN be rejected
+    # (the rank-1 threshold)
+    "bh_p1": None,                  # e.g. 0.0005
+}
+CHECKS = {
+    "se_rho": 1/np.sqrt(1000),
+    "death_bp": 600/12,
+    "bartlett": np.sqrt(5),
+    "se_paired": 0.008/np.sqrt(400),
+    "bh_p1": 1*0.05/100,
+}
+for k, expect in CHECKS.items():
+    got = answers[k]
+    ok = got is not None and abs(got - expect) < max(1e-9, abs(expect)*0.02)
+    print(f"{k:10s}: {'PASS' if ok else 'MISS (error log!)'}  (expected {expect:.5g})")
+```
+
+## Part 2 — the word questions (90s each, no notes)
+
+Answer each in a markdown cell, 1–3 sentences. No partial credit
+for vagueness: if it doesn't name the object, it's a miss.
+
+**A1.** wᵀΣw — the object, and why the off-diagonals are the
+diversification story.
+
+```python
+# Your answer:
+```
+
+**A2.** Portfolio mean in weights × means; why variance has cross
+terms the mean doesn't.
+
+```python
+# Your answer:
+```
+
+**A4.** Skewness and excess kurtosis on returns: what each says; the
+trading consequence of getting each wrong.
+
+```python
+# Your answer:
+```
+
+**A5.** Why rolling vol is the vol estimate; what it cannot see.
+
+```python
+# Your answer:
+```
+
+**A6.** The p-value, correctly.
+
+```python
+# Your answer:
+```
+
+**A7.** Consistency vs unbiasedness, one sentence each.
+
+```python
+# Your answer:
+```
+
+**A9.** Bootstrap: resampled / estimated / block length's job.
+
+```python
+# Your answer:
+```
+
+## Part 3 — one re-derivation from memory (5 min)
+
+Derive the Bartlett factor for H-day overlapping returns: state the
+stationary-mean variance formula, the overlap ACF, sum, and the
+final SE multiplier. Show the algebra.
+
+```python
+# Your answer:
+```
+
+## Part 4 — the triage
+
+Table: miss (question id) → type (concept/arithmetic/careless) →
+the fix + scheduled re-learn date.
+
+```python
+# Your answer:
+```
+
+## Hints
+
+- Part 1: the five numbers are the module's five most-used
+  identities — if you need a hint for one, that one goes in the log.
+- Part 3: ρ_k = (H−k)/H for k = 1…H−1; sum = (H−1)/2; factor =
+  sqrt(1 + 2·sum).

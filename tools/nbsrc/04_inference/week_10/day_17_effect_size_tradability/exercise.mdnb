@@ -1,0 +1,92 @@
+# Day 17 — Exercise: Effect Size vs Tradability
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+
+STRATS = {
+    "momentum(mo)":   dict(mu_bp=900.0,  vol=0.12, events=12),
+    "reversal(wk)":   dict(mu_bp=520.0,  vol=0.20, events=52),
+    "factor_tilt(mo)":dict(mu_bp=300.0,  vol=0.08, events=12),
+}
+COSTS = (2, 5, 10, 20, 50)   # bp per round trip
+```
+
+## G1 (L3) — The gate, by hand
+
+For momentum(mo): per-event μ and σ; net annual edge and net Sharpe
+at 5bp/RT; the death cost. Verify by hand (write the arithmetic in a
+comment) and by the formula.
+
+```python
+# YOUR CODE
+```
+
+## G2 (L4) — The cost grid
+
+Build the grid for all three strategies: net Sharpe at each cost in
+COSTS, plus each strategy's death cost and its "viable at net
+Sharpe ≥ 0.5" cost. Print one table (rows = strategies, columns =
+costs). Which strategy is robust at 50bp? Which is a market-maker's
+strategy?
+
+```python
+# YOUR CODE
+```
+
+## G3 (L5) — The event-frequency trap
+
+Same signal, two rebalancing rules: 900bp/yr gross, vol 12%/yr,
+rebalanced monthly (12 events) vs daily (252 events). (a) Net Sharpe
+at 5bp/RT for each rule. (b) Death cost per event for each. (c) The
+same *gross* annual edge implies a different per-event edge — show
+the per-event μ for both rules, and explain why "the signal" alone
+is not a strategy.
+
+```python
+# YOUR CODE
+```
+
+## G4 (L6) — The weekend re-gate
+
+The weekend effect (04.12): per-Monday edge e, 52 events/yr, round
+trip c. (a) Net annual at e = 3bp, c = 10bp (reproduce 04.12). (b)
+The break-even e at c = 10bp; the break-even c at e = 3bp. (c) If
+your data instead showed e = 15bp/Monday (a strong sample), what cost
+would kill it, and what would that imply about the sample?
+
+```python
+# YOUR CODE
+```
+
+## G5 (L7) — The cost-gate paragraph
+
+Write the 4–6 sentence cost-gate block for a strategy card: gross
+edge and vol, events/yr, cost assumption (per side + why that number
+at this size), net Sharpe grid (2/10/20bp), death cost, and the one
+sentence on what cost assumption would change the verdict. The bar:
+a reader could re-run the gate from your paragraph alone.
+
+```python
+# Your answer:
+```
+
+## Hints
+
+- G2: net Sharpe = (mu_bp/1e4/events − c/1e4) / (vol/√events).
+- G3: same annual gross, 21× more events → per-event gross 21×
+  smaller, cost per event the same: the cost tax scales with events.
+- G4: (b) break-even e = c; break-even c = e. (c) e = 15bp survives
+  10bp — but 15bp/Monday is 780bp/yr gross: is that plausible for an
+  index? (04.12's artifact warning.)

@@ -1,0 +1,138 @@
+# Day 21 — Exercise: Module Checkpoint (scaffold)
+
+Choose your signal (menu in lesson.md). The scaffold below is the
+rubric as cells — fill every one from YOUR work. The solution is the
+exemplar for signal A; it is not your path.
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+from scipy import stats
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+from qrc.universe import load_universe
+
+if DATA_SOURCE == "real":
+    px = get_prices(load_universe("research50"), start="2010-01-01")
+else:   # 50-asset null world: no signal exists by construction
+    px = synthetic_prices(n_days=2520, n_assets=50, seed=101, drift_spread=0.0)
+```
+
+## R1 — Hypothesis
+
+State H0 and H1 as a contrast (what minus what, over what period),
+and name the tradable version. (markdown cell)
+
+```python
+# Your answer:
+```
+
+## R2 — Data & universe
+
+Source, period, frequency, screens; name the known biases of this
+universe (check the universe docstring). One paragraph.
+
+```python
+# Your answer:
+```
+
+## R3 — Build the signal + state the design
+
+Build your signal's return series (the exemplar: 3-month formation,
+1-month skip, 1-month hold, top-10 vs bottom-10 monthly spread — a
+ONE-SAMPLE t on the spread, non-overlapping monthly observations).
+State the SE's design in one line BEFORE computing the t.
+
+```python
+# YOUR CODE
+```
+
+## R4 — Effect & CI
+
+The mean spread, SD, n; SE; t; 95% CI in bp/month and bp/year; band
+as a fraction of the effect.
+
+```python
+# YOUR CODE
+```
+
+## R5 — Power
+
+Detectable effect (2.8·SE), annualized; reported effect vs the line;
+the sentence a reviewer would copy.
+
+```python
+# YOUR CODE
+```
+
+## R6 — Family
+
+The declared family size (what did you test, and what did you *not*
+test that you could have?); Bonferroni threshold at that m; verdict;
+the zoo row (m = 300) in one number.
+
+```python
+# YOUR CODE
+```
+
+## R7 — Stability
+
+Three non-overlapping sub-periods of your signal: the t in each; the
+pattern in one sentence.
+
+```python
+# YOUR CODE
+```
+
+## R8 — Cost
+
+Round-trip assumption with justification (per side, at a stated size
+and participation); gross annual; net annual; net Sharpe; death
+cost; the margin in "×" of the assumed cost.
+
+```python
+# YOUR CODE
+```
+
+## R9 — Placebo
+
+Run the IDENTICAL pipeline on the synthetic 50-asset panel (known
+zero signal). Its t, its CI, its stability pattern, its gate verdict.
+What does the null world's output tell you about your real-world
+number?
+
+```python
+# YOUR CODE
+```
+
+## R10 — Verdict
+
+The one-paragraph disposition: survives / survives conditionally /
+doesn't, with the two conditions that would change it. Then: the two
+days of the module whose lessons your audit used most.
+
+```python
+# Your answer:
+```
+
+## Hints
+
+- R3: month-ends from `pd.Series(px.index, index=px.index.to_period("M")).groupby(level=0).last()`; formation = px[e_{k-2}]/px[e_{k-5}] − 1; hold = px[e_k]/px[e_{k-1}] − 1; rank by formation; spread = top10 hold mean − bottom10 hold mean.
+- R6: if your only declared hypothesis is this one, m = 1 — but say
+  honestly what the *search* was (menu items A/B/C are three
+  candidates you could have run; a pre-registered m = 3 is the
+  defensible version).
+- R9: the placebo's stability blocks "discover" effects in some
+  blocks — that is the multiplicity made visible again.

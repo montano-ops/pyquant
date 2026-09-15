@@ -1,0 +1,95 @@
+# Day 18 — Solution: Week 10 Mixed Set
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+from scipy import stats
+```
+
+## X1 — grill a fresh claim
+
+```python
+eff, t, m = 220.0, 2.9, 12
+se = eff/t
+ci = (eff - 1.96*se, eff + 1.96*se)
+detect = 2.8*se
+thr = stats.norm.ppf(1 - 0.05/(2*m))
+p = 2*stats.norm.sf(abs(t))
+print(f"SE {se:.1f}bp/yr | CI {ci[0]:.0f}–{ci[1]:.0f} | detectable {detect:.0f}bp/yr "
+      f"({'above' if eff > detect else 'below'} line)")
+print(f"Bonferroni(m={m}) threshold {thr:.2f} | t {t} -> {'clears' if t > thr else 'FAILS'} | p {p:.4f}")
+```
+
+**Expected reasoning.** SE 75.9bp/yr; CI [71, 369]; detectable
+212bp — the reported 220 sits *just above* its own power line (a
+real 180bp effect would have been missed ~45% of the time);
+Bonferroni threshold 2.87 → 2.9 clears by 0.03 — no margin.
+Design: non-overlapping quarterly portfolios — no overlap flag, but
+quarterly portfolio returns from the same stocks share factors; ask
+the clustering question. Verdict: "a real-magnitude, positive-CI
+candidate that clears its family by a hair with zero power margin —
+a replication candidate, not a discovery."
+
+## X2 — decode a fresh table
+
+```python
+coef = np.array([8., 15., 40., 5.])
+ts = np.array([2.2, 2.6, 3.4, 1.8])
+se = coef/ts
+print(pd.DataFrame({"coef": coef, "SE": se,
+                    "CI_lo": coef - 1.96*se, "CI_hi": coef + 1.96*se,
+                    "star": ts > 1.96, "band/eff": 1.96/np.abs(ts)}).round(2).to_string())
+m = 4
+thr_b = stats.norm.ppf(1 - 0.05/(2*m))
+p = 2*stats.norm.sf(ts)
+ps = np.sort(p); ks = np.arange(1, m+1)
+k = np.max(ks[ps <= ks*0.05/m]) if (ps <= ks*0.05/m).any() else 0
+print(f"Bonferroni thr {thr_b:.2f}: survivors {ts[ts > thr_b].tolist()} | BH rejects {k}")
+```
+
+**Expected reasoning.** Stars: rows 1–3 (2.2, 2.6, 3.4); row 4
+unstarred. Bonferroni threshold 2.50: only the 40bp row (t = 3.4)
+survives. BH: k = 3 (p's [0.0007, 0.0093, 0.0274, 0.072] against
+rank thresholds [0.0125, 0.025, 0.0375, 0.05]) — BH keeps three,
+Bonferroni keeps one: the two procedures disagree *by design*
+(FWER vs FDR games, 04.11). Row 4's honest null: CI [−0.4, 10.4]
+bp/quarter = [−5, 125]bp/yr — "effects above ~125bp/yr (or below
+~−5bp/yr) are excluded at 95%."
+
+## X3 — gate a fresh strategy
+
+```python
+gross, vol, events, c = 180., 0.09, 4, 15
+net = gross - c*events
+sh = net/(vol*1e4)
+print(f"net {net:+.0f}bp/yr | Sharpe {sh:.3f} | death {gross/events:.0f}bp/event | "
+      f"flip: cost > {gross/events:.0f}bp or events > {gross/c:.0f}/yr")
+```
+
+**Expected reasoning.** Net 120bp/yr, Sharpe 0.13 — alive but thin.
+Death 45bp/event; the verdict flips at cost > 45bp/RT (3× current)
+or turnover > 12 events/yr (3× current quarterly). "The gate passes
+with 3× margin in both directions — a live strategy for a patient
+book, a dead one for a fast one."
+
+## X4 — the full audit (exemplar)
+
+"Your colleague: the grill says *candidate, not discovery* — the CI
+is positive and the family is cleared, but by a hair (2.9 vs 2.87),
+with the effect sitting on its own power line, and the quarterly
+design's clustering unpriced. The gate says *thin* — at 15bp/RT
+quarterly, net is 120bp/yr (Sharpe 0.13); the margin to the death
+cost is 3× in cost or 3× in turnover. I'd fund it only under two
+conditions: (1) a pre-registered replication in a disjoint sample at
+corrected t ≥ 3.4, and (2) a cost measurement (12.8's model) at your
+intended size confirming <10bp round trip. Absent both, this is a
+watchlist entry with a replication plan — not a position."

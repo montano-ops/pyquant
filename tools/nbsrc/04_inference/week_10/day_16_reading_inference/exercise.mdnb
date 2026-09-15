@@ -1,0 +1,96 @@
+# Day 16 — Exercise: Reading Inference in Papers
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+from scipy import stats
+
+# The fictional paper's Table II (decode this)
+TABLE = pd.DataFrame({
+    "characteristic": ["Momentum (12-1)", "Size", "Book/Market", "Volatility", "Turnover"],
+    "coef_bp_mo": [55.0, -12.0, 18.0, -9.0, -22.0],
+    "t": [3.06, -1.33, 2.57, -2.25, -2.75],
+})
+```
+
+## T1 (L4) — The decode, row by row
+
+For each row compute: SE (backed out), 95% CI in bp/mo and annualized
+(×12), the band as a fraction of the coefficient (1.96/|t|), and the
+star status at 5%. Print a decoded table. Which rows are "results"
+after the decode, before the family?
+
+```python
+# YOUR CODE
+```
+
+## T2 (L5) — The table is its own family
+
+Apply the family the table itself creates: 5 rows = 5 tests.
+(a) Bonferroni threshold; which rows clear it. (b) BH at q = 0.05:
+how many survive. (c) The "expected false stars" count at raw 5%.
+Rewrite the table's conclusion in one sentence: how many of the four
+stars should be there?
+
+```python
+# YOUR CODE
+```
+
+## T3 (L5) — The unstarred row as evidence
+
+The Size row: t = −1.33. (a) Its CI in bp/mo. (b) State what it
+*excludes*: effects of what magnitude are ruled out at 95%? (c)
+Write the "honest null" sentence a reviewer should be able to copy
+from your decode.
+
+```python
+# YOUR CODE
+```
+
+## T4 (L6) — The checklist on a real excerpt
+
+JT93 (1993) Table I style: 12-1 formation/skip; decile mean returns;
+W−L spread ≈ +0.9%/month with t ≈ 3.0 (monthly, overlapping 5-day
+portfolios, 1964–89 NYSE, ~500 stocks). Run the ten-question
+checklist as a table: question → what the paper states (or doesn't)
+→ your decode. At minimum answer: unit of observation, null, design
+(overlap!), SE flavor, family, money units, what would kill it.
+
+```python
+# Your answer:
+```
+
+## T5 (L7) — The author email
+
+A paper reports: "Column 3: signal X coefficient 3.1bp/mo, t = 4.2,
+'n = 8,760 observations'. No footnote on clustering, no statement of
+how many columns the table has, supplementary material tests 12
+signal variants." Draft the four-question email (design, SE flavor,
+family, what would kill it) — each question one sentence, written so
+the author cannot answer with a shrug.
+
+```python
+# Your answer:
+```
+
+## Hints
+
+- T1: SE = coef/t; band/effect = 1.96/|t| — the decode needs no data,
+  only arithmetic.
+- T2: 5 tests at 5%: expected false stars = 5 × 0.05 = 0.25;
+  Bonferroni threshold 2.97; the table has 4 stars. Do the numbers
+  add up?
+- T4: the overlap is 5-day holdings sampled monthly — 4/5 of each
+  observation overlaps its neighbor: the √5 question again, and the
+  family is the 10 deciles + the spread, not one test.
