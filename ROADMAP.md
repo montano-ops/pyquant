@@ -4,7 +4,7 @@ This is the canonical map of the course: every module, every week, every day,
 every paper, and how they connect. Modules 00–03 are fully authored (day
 folders contain lesson / exercise / solution / review, all solution
 notebooks execute end-to-end). Modules 04–05 are partially authored
-(module 04 week 8; module 05 week 11); modules 04–15 are otherwise fully
+(module 04 weeks 8–9; module 05 week 11); modules 04–15 are otherwise fully
 **specified** at the day level below and
 in each module's README — day folders are authored to the same standard
 progressively (see [AUTHORING.md](AUTHORING.md) for the exact template;
@@ -61,7 +61,7 @@ speed: the retrieval practice, spacing, and re-derivations ARE the course.
 | 01 | [Mathematical foundations](01_math/) | 1–2 | ✅ |
 | 02 | [Probability](02_probability/) | 3–5 | ✅ |
 | 03 | [Statistics](03_statistics/) | 6–7 | ✅ |
-| 04 | [Statistical inference](04_inference/) | 8–10 | 🟨 (week 8 authored; 9–10 specced) |
+| 04 | [Statistical inference](04_inference/) | 8–10 | 🟨 (weeks 8–9 authored; 10 specced) |
 | 05 | [Financial data](05_financial_data/) | 11–12 | 🟨 (week 11 authored; 12 specced) |
 | 06 | [Regression](06_regression/) | 13–15 | 🔲 |
 | 07 | [Asset pricing & factors](07_asset_pricing/) | 16–19 | 🔲 |
@@ -179,7 +179,7 @@ statistics, and know exactly how each one can mislead.*
 ## Module 04 — Statistical inference (Weeks 8–10) 🟨
 
 *Goal: answer "could this be luck?" with machinery you understand from the
-inside. Week 8 is authored; weeks 9–10 are specced below and in the module
+inside. Weeks 8–9 are authored; week 10 is specced below and in the module
 README.*
 
 | Day | Title | What you do | Paper hook |
@@ -191,13 +191,13 @@ README.*
 | 04.5 | Errors, power, effect size | Type I/II, power curves; statistical ≠ economic ≠ tradable | — |
 | 04.6 | Review | Retrieval + interleaved problems | — |
 | 04.7 | Mini-project: t-stat laboratory | How many years of data until a Sharpe-0.5 strategy reaches t=2? (simulation) | — |
-| 04.8 | Two-sample & paired tests 🔲 | Strategy A vs B; paired designs; dependence between track records | — |
-| 04.9 | The bootstrap 🔲 | Resampling returns; bootstrap CI for mean & Sharpe; block bootstrap for time series | — |
-| 04.10 | Permutation tests 🔲 | Shuffling labels; why you can't shuffle time series (block/rank alternatives) | — |
-| 04.11 | Multiple testing 🔲 | The 5% lottery: 100 null signals → ~5 "discoveries"; Bonferroni; Benjamini-Hochberg | — |
-| 04.12 | Research application: the weekend effect 🔲 | Full small-paper reproduction: day-of-week mean returns, t-tests, multiple-testing audit | French (1980) — reproduce |
-| 04.13 | Overlapping observations 🔲 | Why monthly overlapping returns inflate t-stats; HAC preview | — |
-| 04.14 | Review 🔲 | Retrieval + interleaved problems | — |
+| 04.8 | Two-sample & paired tests | Strategy A vs B; paired designs; dependence between track records | — |
+| 04.9 | The bootstrap | Resampling returns; bootstrap CI for mean & Sharpe; block bootstrap for time series | — |
+| 04.10 | Permutation tests | Shuffling labels; why you can't shuffle time series (block/rank alternatives) | — |
+| 04.11 | Multiple testing | The 5% lottery: 100 null signals → ~5 "discoveries"; Bonferroni; Benjamini-Hochberg | — |
+| 04.12 | Research application: the weekend effect | Full small-paper reproduction: day-of-week mean returns, t-tests, multiple-testing audit | French (1980) — reproduce |
+| 04.13 | Overlapping observations | Why monthly overlapping returns inflate t-stats; HAC preview | — |
+| 04.14 | Review | Retrieval + interleaved problems | — |
 | 04.15 | Mini-project: significance grill 🔲 | Take three published claims (t-stats) and interrogate power, effect size, multiplicity | Harvey, Liu & Zhu (2016) — excerpt |
 | 04.16 | Reading inference in papers 🔲 | Work through a results table end-to-end: what is tested, what the stars mean | — |
 | 04.17 | Effect size vs tradability 🔲 | Costs vs premium magnitude; minimum viable edge | — |

@@ -1,0 +1,81 @@
+# Day 13 — Exercise: Overlapping Observations
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+rng = np.random.default_rng(17)
+r_null = rng.normal(0, 0.01, 5000)          # pure null daily, true mean 0
+if DATA_SOURCE == "real":
+    r = get_prices("SPY", start="2000-01-01").iloc[:, 0].pct_change().dropna()
+else:
+    r = synthetic_prices(n_days=5000, n_assets=1, seed=63).iloc[:, 0].pct_change().dropna()
+```
+
+## E1 (L3) — The triangle, verified
+
+Build H = 5 overlapping returns from `r_null` with `.rolling(H).sum()`.
+(a) Compute ACF(1..4) — do they match (0.8, 0.6, 0.4, 0.2) within
+sampling noise? (b) Do the same for H = 21 and state the first three
+lags analytically, then check.
+
+```python
+# YOUR CODE
+```
+
+## E2 (L4) — The Monte-Carlo proof
+
+Repeat 1,000 times: fresh 5,000-day iid null series, H = 5 overlap,
+t-test of the overlapping mean vs 0. (a) Naive rejection rate at 5%;
+(b) Bartlett-corrected rejection rate; (c) the expected naive rate
+predicted by the theory you now have. This is the experiment that
+*proves* the correction works — run it.
+
+```python
+# YOUR CODE
+```
+
+## E3 (L5) — The real design
+
+For `r` (SPY or synthetic): H = 5 and H = 21 overlapping means:
+naive t, ACF, Bartlett factor, corrected t. Does the factor match √H
+as theory says — on data where the daily returns are NOT iid (fat
+tails, clustering)? What extra does the market add to the correction?
+
+```python
+# YOUR CODE
+```
+
+## E4 (L7) — The paper audit
+
+A paper: "weekly portfolio returns from 21-day holdings, N = 1,400
+weekly observations, mean spread 8bp, t = 3.5, 'highly significant'."
+(a) The design in one sentence (overlapping how much?). (b) Corrected
+t. (c) The two honest fixes the authors could have used. (d) One
+sentence to a colleague about what this t really says.
+
+```python
+# Your answer:
+```
+
+## Hints
+
+- E2: per rep, n = 4,996 overlapping obs; rejection when |t| > 1.96
+  (large-n normal is fine). 1,000 reps × ~5k ops — keep it vectorized
+  enough to finish in a couple of minutes.
+- E3: factor = sqrt(1 + 2*sum(acf[1:H])) computed from the OVERLAPPING
+  series' own ACF, truncated at H−1. Compare to sqrt(H).

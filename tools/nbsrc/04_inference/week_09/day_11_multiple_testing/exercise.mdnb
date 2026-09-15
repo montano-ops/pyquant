@@ -1,0 +1,80 @@
+# Day 11 — Exercise: Multiple Testing
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+from scipy.stats import norm
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+
+rng = np.random.default_rng(41)
+```
+
+## E1 (L3) — The 5% lottery, watched
+
+Run 100 independent null tests at α = 0.05 (simulate p ~ Uniform(0,1);
+"reject" if p < 0.05). Repeat 1,000 times. (a) Mean number of false
+positives; (b) the chance of seeing *at least one* (compare with
+1 − 0.95^100); (c) the distribution is binomial(100, 0.05) — check
+its mean and SD. What does "one significant result out of 100 nulls"
+tell you?
+
+```python
+# YOUR CODE
+```
+
+## E2 (L4) — Bonferroni's price
+
+Same simulation, but each test runs at α/100. (a) Mean false positives
+now (1,000 repetitions); (b) the probability of *zero* false positives
+per family of 100; (c) the cost: with a real signal of t = 2.2 in one
+of the 100, what fraction of repetitions find it (power per test at
+α/100)? Write the trade in one sentence.
+
+```python
+# YOUR CODE
+```
+
+## E3 (L5) — Benjamini–Hochberg and the zoo arithmetic
+
+Implement `bh(pvals, q)`. Then the zoo: m = 100 candidates, 10 truly
+signal (fixed t_sig), 90 null (t ~ N(0,1)), repeated 2,000 times.
+(a) At discovery rule "|t| > 2.0": fraction of discoveries that are
+junk. (b) Same at |t| > 3.0. (c) Run BH at q = 0.05 instead: achieved
+FDR at t_sig = 2.5. (d) The table that motivates "t > 3": rows
+t_sig ∈ {2.0, 2.5, 3.0} × {junk fraction at |t|>2, junk fraction at
+|t|>3, BH FDR}.
+
+```python
+# YOUR CODE
+```
+
+## E4 (L7) — The audit
+
+A paper: "we test day-of-week (5 tests), month-of-year (12 tests),
+three horizons (3× each block), and report two effects at 5%."
+(a) How many tests did they really run? (b) At 5% unadjusted, what is
+the expected number of false positives? (c) One sentence on what the
+paper should have reported.
+
+```python
+# Your answer:
+```
+
+## Hints
+
+- E2: power at α/100 = P(reject | t=2.2, threshold = norm.ppf(1-α/200))
+  — a two-sided test at level 0.0005 has a threshold near 3.6.
+- E3: observed p-values are Uniform(0, p_true) — draw them that way,
+  not as constants. Junk fraction = V/R over the run, averaged.

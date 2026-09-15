@@ -1,0 +1,84 @@
+# Day 8 — Exercise: Two-Sample & Paired Tests
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    px = get_prices(["SPY", "QQQ"], start="2010-01-01")
+else:
+    px = synthetic_prices(n_days=3000, n_assets=2, seed=58, corr=0.7)
+    px.columns = ["SPY", "QQQ"]
+r = px.pct_change().dropna()
+```
+
+## E1 (L3) — Welch's degrees of freedom, by hand
+
+Given n₁ = 120, s₁ = 1.2%, n₂ = 200, s₂ = 0.9%: compute the
+Welch–Satterthwaite df by hand (write the formula in a comment first),
+then check with `scipy.stats.ttest_ind(..., equal_var=False)`.
+How far is it from either n−1?
+
+```python
+# YOUR CODE
+```
+
+## E2 (L4) — The pairing dividend, measured on data
+
+For the two loaded series: (a) Welch t on the two return series;
+(b) paired t on the difference; (c) the correlation of the two series;
+(d) the ratio of SEs predicted by 1 − ρ arithmetic:
+`sqrt((sA²+sB²)/(sA²+sB²−2ρsAsB))`. Do (c) and (d) predict the observed
+ratio? What does the ratio do as ρ → 0 and ρ → 1?
+
+```python
+# YOUR CODE
+```
+
+## E3 (L5) — Active-return evaluation, the honest way
+
+Build the difference series, report its mean, SD, n, and paired t.
+Then: if the mean active return is *your* edge, what annualized edge
+does this imply, and what is the 95% CI on the annualized number
+(CI on the daily mean × 252 — and one caveat about the ×252)?
+
+```python
+# YOUR CODE
+```
+
+## E4 (L7) — The design question
+
+A paper compares a momentum strategy (5-day holdings) vs an equal-weight
+index, both daily, over 2010–2024. It reports Welch t = 1.9.
+(a) Which design is correct here, and why? (b) If the paired t were
+2.3, would you trust it fully? Name the remaining problem this module
+has a dedicated day for. (c) If instead the "benchmark" were 10-year
+treasuries, how does the pairing story change?
+
+```python
+# Your answer:
+```
+
+## Hints
+
+- E1: df = (a+b)²/(a²/(n₁−1) + b²/(n₂−1)) with a = s₁²/n₁, b = s₂²/n₂.
+  It lives near the LARGER sample when variances are similar.
+- E2: the dividend formula only needs ρ and the SD ratio; you can
+  reproduce the observed ratio to ~2 significant figures.
+- E3: ×252 multiplies the mean, the SE, and the CI — the t-stat is
+  unchanged by annualization. The caveat: volatility clustering makes
+  the daily observations non-iid.

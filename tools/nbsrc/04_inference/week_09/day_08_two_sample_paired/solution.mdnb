@@ -1,0 +1,118 @@
+# Day 8 — Solution: Two-Sample & Paired Tests
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+from scipy import stats
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    px = get_prices(["SPY", "QQQ"], start="2010-01-01")
+else:
+    px = synthetic_prices(n_days=3000, n_assets=2, seed=58, corr=0.7)
+    px.columns = ["SPY", "QQQ"]
+r = px.pct_change().dropna()
+A, B = r.iloc[:, 0], r.iloc[:, 1]
+```
+
+## E1 — Welch df by hand
+
+```python
+# target design: n1=120 s1=1.2%, n2=200 s2=0.9%; simulate it and check
+x = np.random.default_rng(0).normal(0, 0.012, 120)
+y = np.random.default_rng(1).normal(0, 0.009, 200)
+n1, n2 = len(x), len(y)
+a, b = x.var(ddof=1)/n1, y.var(ddof=1)/n2          # Welch's a and b
+df_hand = (a + b)**2 / (a**2/(n1-1) + b**2/(n2-1)) # W–S formula, by hand
+t_hand = (x.mean() - y.mean())/np.sqrt(a + b)
+
+res = stats.ttest_ind(x, y, equal_var=False)
+p_hand = 2*stats.t.sf(abs(t_hand), df_hand)
+print(f"df by hand: {df_hand:.1f}  (bounds: {min(n1,n2)-1} .. {n1+n2-2})")
+print(f"p by hand (t={t_hand:.3f}, df={df_hand:.1f}): {p_hand:.4f}")
+print(f"p from scipy ttest_ind:                       {res.pvalue:.4f}")
+assert abs(p_hand - res.pvalue) < 1e-6, "hand Welch must match scipy"
+```
+
+**Expected reasoning.** With unequal variances the df lands between
+n₁−1 and n₂−1 — closer to the group contributing less to a+b (here the
+smaller-variance group, the n=200 one, so df ≈ 150–190). Matching
+scipy's p-value to 1e-6 is the point: Welch–Satterthwaite is just
+arithmetic on the sample stats, and now you can do it without a
+package. The df formula *is* the price of refusing to assume equal
+variance.
+
+## E2 — the pairing dividend, measured
+
+```python
+se_ind = np.sqrt(A.var()/len(A) + B.var()/len(B))
+d = A - B
+se_paired = d.std()/np.sqrt(len(d))
+rho = A.corr(B)
+predicted = np.sqrt((A.var() + B.var()) / (A.var() + B.var() - 2*rho*A.std()*B.std()))
+t_welch = (A.mean() - B.mean()) / se_ind
+t_paired = d.mean() / se_paired
+print(f"corr(A,B) = {rho:.3f}")
+print(f"SE: Welch {se_ind:.5f} vs paired {se_paired:.5f}  -> observed ratio {se_ind/se_paired:.2f}")
+print(f"predicted ratio from 1-cov arithmetic: {predicted:.2f}")
+print(f"t: Welch {t_welch:.3f} | paired {t_paired:.3f}")
+```
+
+**Expected reasoning.** Observed ratio ≈ predicted ratio (they are the
+same arithmetic — the sample version of the identity). On real
+SPY/QQQ (ρ ≈ 0.85–0.95) the ratio is ~3–5×; in the synthetic world
+(corr=0.7) it is ~2.3×. Limits: ρ→0 makes the ratio →1 (no dividend —
+Welch was fine); ρ→1 makes it →∞ (the difference becomes nearly
+constant — pairing is *essential*, and a "strategy vs benchmark" t on
+the independent SE is meaningless). The dividend is not a statistical
+trick: the market literally cancels in `A − B`.
+
+## E3 — active returns, the honest way
+
+```python
+ann = 252
+mu_d, se_d = d.mean(), d.std()/np.sqrt(len(d))
+t = mu_d/se_d
+ci_daily = (mu_d - 1.96*se_d, mu_d + 1.96*se_d)
+print(f"daily active mean {mu_d:.5%}, SE {se_d:.5%}, t = {t:.2f}, n = {len(d)}")
+print(f"annualized: {mu_d*ann:+.2%}  95% CI [{ci_daily[0]*ann:+.2%}, {ci_daily[1]*ann:+.2%}]")
+```
+
+**Expected reasoning.** ×252 is just a unit conversion: it scales mean,
+SE, and CI identically, so the t-stat is unchanged — annualization
+never "makes a result significant." On real SPY/QQQ the CI usually
+straddles zero (that is what an honest number looks like for two
+index ETFs); on the synthetic seed it may not — the point is the
+machinery, not the sign. **The caveat:** the SE assumes iid daily
+differences; volatility clustering (03.10) makes the honest SE bigger
+by roughly √(n/n_eff) — compute the ACF of |d| and the effective n
+if the t is anywhere near 2.
+
+## E4 — the design question (exemplar)
+
+(a) **Paired** — same dates, and both legs hold market exposure, so the
+shared market cancels in the difference; Welch here overstates the SE
+and the "1.9" understates significance (or if the strategy is
+market-neutral, the difference is idiosyncratic and Welch is closer —
+the paper must say which).
+(b) **Not fully.** 5-day holdings resampled daily overlap 4/5: the
+difference series has autocorrelation ≈ 0.8, and the paired t is
+inflated by roughly √(1+2ρ₁·(n−1)/n ≈ √3) → t = 2.3 is really ≈ 1.3.
+That is day 04.13 (overlapping observations) — the most common
+t-stat inflation in strategy papers.
+(c) **Equity vs 10y bonds:** the pairing is still by date, but the
+shared variance is tiny (ρ ≈ 0 or negative) — no dividend, possibly a
+*penalty* (negative ρ inflates sd of the difference). Welch and paired
+are then close; the comparison is also contaminated by two different
+risk regimes, which a t-test cannot see.

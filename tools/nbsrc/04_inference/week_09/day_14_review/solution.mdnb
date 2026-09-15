@@ -1,0 +1,152 @@
+# Day 14 — Solution: Week 9 Mixed Set
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+from scipy import stats
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    px = get_prices(["SPY", "QQQ"], start="2010-01-01")
+else:
+    px = synthetic_prices(n_days=3000, n_assets=2, seed=77, corr=0.6)
+    px.columns = ["SPY", "QQQ"]
+r = px.pct_change().dropna()
+rng = np.random.default_rng(91)
+```
+
+## M1 — two designs, one number
+
+```python
+A = r.iloc[:, 0] + 0.00005
+B = r.iloc[:, 1]
+d = A - B
+t_welch = (A.mean() - B.mean()) / np.sqrt(A.var()/len(A) + B.var()/len(B))
+t_paired = d.mean() / (d.std()/np.sqrt(len(d)))
+a = np.array([pd.Series(d).autocorr(k) for k in range(1, 21)])
+mult = np.sqrt(1 + 2*a.sum())
+t_corr = t_paired / mult
+print(f"edge {d.mean():.5%}/day | Welch {t_welch:.2f} | paired {t_paired:.2f} | "
+      f"paired+Bartlett {t_corr:.2f} (factor {mult:.2f})")
+```
+
+**Expected reasoning.** Welch t is the *wrong* design (same dates,
+shared market) — it overstates the SE and understates the edge by
+~1.5–2×. The paired t is the right design; the Bartlett factor on the
+difference is usually close to 1 (the market cancels, leaving
+idiosyncratic, nearly uncorrelated differences) — so the correction
+doesn't change the verdict here. **The paired design is doing the work
+the Bartlett correction would have to do** — that is what pairing
+buys: it removes the dependence by construction.
+
+## M2 — three resamplers, one statistic
+
+```python
+x = r.iloc[:, 0].values
+sharpe = lambda v: v.mean()/v.std()
+s0 = sharpe(x)
+
+# (a) naive bootstrap
+idx = rng.integers(0, len(x), size=(2000, len(x)))
+boot = np.array([sharpe(x[i]) for i in idx])
+
+# (b) block bootstrap, b=22
+def bb(x, b=22, B=2000, rng=rng):
+    n = len(x); out = np.empty(B)
+    for i in range(B):
+        starts = rng.integers(0, n, size=int(np.ceil(n/b)))
+        out[i] = sharpe(np.concatenate([x[s:s+b] for s in starts])[:n])
+    return out
+block = bb(x)
+
+# (c) permutation null: "the mean is arbitrary" -> sign-flip (keep the
+# magnitude structure, kill the drift); ask P(sharpe* >= sh0)
+perm = np.array([sharpe(x * rng.choice([-1, 1], len(x))) for _ in range(2000)])
+p_perm = (np.sum(perm > s0) + 1) / (len(perm) + 1)
+print(f"Sharpe {s0:.4f} | naive SE {boot.std():.4f} CI "
+      f"[{np.percentile(boot,2.5):.3f},{np.percentile(boot,97.5):.3f}] | "
+      f"block SE {block.std():.4f} | sign-perm p {p_perm:.3f}")
+```
+
+**Expected reasoning.** (a) answers "how much would this Sharpe move
+under iid resampling" — the sampling distribution under the iid
+assumption (usually too narrow here); (b) the same question with the
+clustering allowed — the honest SE for a vol-based statistic; (c)
+answers a *different* question: "is this Sharpe larger than a
+sign-randomized world" — a null test of mean ≠ 0 that keeps the
+magnitude structure. Three tools, three questions; the week's skeleton
+made concrete.
+
+## M3 — a screen with a family
+
+```python
+m, n = 50, 500
+pvals, ts = [], []
+for _ in range(m):
+    ret = rng.normal(0, 0.04, n)                           # 500 stocks' forward returns
+    lab = rng.choice([0, 1], n)                            # random "characteristic" split
+    hi, lo = ret[lab == 1], ret[lab == 0]
+    t = (hi.mean() - lo.mean()) / np.sqrt(hi.var()/len(hi) + lo.var()/len(lo))
+    ts.append(t); pvals.append(2*stats.t.sf(abs(t), len(hi)+len(lo)-2))
+ts, pvals = np.array(ts), np.array(pvals)
+print(f"|t|>2 by noise: {(np.abs(ts) > 2).sum()} of {m}  (theory {m*0.0455:.1f})")
+p = np.sort(pvals); ks = np.arange(1, m+1)
+k = np.max(ks[p <= ks*0.05/m]) if (p <= ks*0.05/m).any() else 0
+print(f"BH@0.05 rejects: {k}")
+```
+
+**Expected reasoning.** ≈ 2–3 false discoveries at |t| > 2 (theory
+2.3); BH typically rejects 0–2 — the procedure *admits* a few
+lottery winners at q = 0.05 (that is what FDR control *means*: the
+declared set is mostly false here, because there IS nothing true in
+this simulation). The honest composition statement: "Of the k
+survivors, the expected fraction false is q = 0.05 *if* the independence
+assumptions hold — in a pure-noise screen, every survivor is false by
+construction; BH told us how many to expect, not which are real."
+
+## M4 — the overlapping audit
+
+```python
+x = r.iloc[:, 0]
+H = 10
+R = x.rolling(H).sum().dropna()
+a = [np.corrcoef(R.values[:-k], R.values[k:])[0, 1] for k in range(1, H)]
+mult = np.sqrt(1 + 2*sum(a))
+t_ov = R.mean() / (R.std()/np.sqrt(len(R)))
+non_ov = x.iloc[::H]
+t_no = non_ov.mean() / (non_ov.std()/np.sqrt(len(non_ov)))
+print(f"overlapping: N={len(R)} naive t {t_ov:.2f} factor {mult:.2f} -> {t_ov/mult:.2f}")
+print(f"non-overlapping: N={len(non_ov)} t {t_no:.2f}")
+```
+
+**Expected reasoning.** The corrected overlapping t and the
+non-overlapping t land within sampling noise of each other (both
+estimate the same mean with the same effective information, N/H).
+**The two designs agree on the information content** — the overlap
+never creates information, it only mislabels its accounting. If the
+two disagree by more than ~0.3 t's, one of the computations is wrong
+— that is a useful self-check to keep.
+
+## M5 — the paragraph (exemplar)
+
+"The design is a 21-day-holding momentum spread sampled daily, so each
+observation overlaps its next ~20 of 21 days: the Bartlett factor is
+≈ √21 ≈ 4.6, and the reported t = 2.8 on the *best of 40 tested
+variations* is first corrected to ≈ 0.6 and then subjected to the
+family — at 40 tests, the best null t is expected near 2.5–3, so even
+an uncorrected 2.8 is inside the lottery's reach. After both
+corrections the result is indistinguishable from noise: the honest
+disposition is to re-run with Newey–West lags ≥ 20 (or non-
+overlapping sampling) on a pre-specified single variation, with the
+family size disclosed, before any resource is committed."

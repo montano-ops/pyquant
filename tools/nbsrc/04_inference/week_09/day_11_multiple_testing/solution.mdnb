@@ -1,0 +1,121 @@
+# Day 11 — Solution: Multiple Testing
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+from scipy.stats import norm
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+
+rng = np.random.default_rng(41)
+```
+
+## E1 — the 5% lottery, watched
+
+```python
+m, reps, alpha = 100, 1000, 0.05
+P = rng.uniform(0, 1, size=(reps, m))
+V = (P < alpha).sum(axis=1)                 # false positives per family
+print(f"E[V] = {V.mean():.2f}  (theory m*alpha = {m*alpha})")
+print(f"P(V>=1) = {(V >= 1).mean():.3f}  (theory {1 - (1-alpha)**m:.3f})")
+print(f"SD(V) = {V.std():.2f}  (theory sqrt(m*a*(1-a)) = {np.sqrt(m*alpha*(1-alpha)):.2f})")
+```
+
+**Expected reasoning.** ~5 false positives per family; ~99.4% of
+families show at least one. **One significant result out of 100 nulls
+is the modal outcome of pure noise** (the binomial mode is 4–5). This
+single fact — repeated in every form for the rest of the course — is
+why "significant at 5%" without the family size is an incomplete
+number.
+
+## E2 — Bonferroni's price
+
+```python
+alpha_b = alpha / m
+P = rng.uniform(0, 1, size=(reps, m))
+Vb = (P < alpha_b).sum(axis=1)
+print(f"Bonferroni: E[V] = {Vb.mean():.3f}  P(V=0) = {(Vb == 0).mean():.3f}")
+
+# power cost: one true signal at t = 2.2, tested at level alpha/100
+thr = norm.ppf(1 - alpha_b/2)
+power = norm.sf(thr, loc=2.2)
+print(f"threshold at alpha/100: {thr:.2f}; power at true t=2.2: {power:.3f}")
+```
+
+**Expected reasoning.** E[V] drops to ≈ 0.05 (5% of families have any
+false positive, one per family); P(V=0) ≈ 0.95 — the union bound made
+real. The price: the threshold moves from 1.96 to ≈ 3.57, and a real
+t = 2.2 signal is now caught only ~5% of the time. **The trade in one
+sentence: Bonferroni buys "almost certainly no junk" at the price of
+"almost certainly miss a real t=2 effect."** For a single strategy
+decision that is the right price; for mining 100 candidates it is the
+wrong game (FDR next).
+
+## E3 — BH and the zoo arithmetic
+
+```python
+def bh(pvals, q):
+    p = np.sort(np.asarray(pvals))
+    ks = np.arange(1, len(p) + 1)
+    ok = p <= ks * q / len(p)
+    return int(np.max(ks[ok])) if ok.any() else 0
+
+def simulate_zoo(t_sig, m=100, n_true=10):
+    t_null = rng.normal(0, 1, m - n_true)
+    p_top = 2 * (1 - norm.cdf(t_sig))            # signals' true p-value ceiling
+    p = np.concatenate([rng.uniform(0, p_top, n_true),
+                        2 * norm.sf(np.abs(t_null))])
+    is_true = np.concatenate([np.ones(n_true, bool), np.zeros(m - n_true, bool)])
+    t_all = np.concatenate([np.full(n_true, t_sig), t_null])
+    return p, is_true, t_null, t_all
+
+reps = 2000
+for t_sig in [2.0, 2.5, 3.0]:
+    junk2, junk3, fdr_bh = 0.0, 0.0, 0.0
+    for _ in range(reps):
+        p, is_true, t_null, t_all = simulate_zoo(t_sig)
+        R2, V2 = (np.abs(t_all) > 2.0).sum(), (np.abs(t_null) > 2.0).sum()
+        junk2 += V2 / max(R2, 1)
+        R3, V3 = (np.abs(t_all) > 3.0).sum(), (np.abs(t_null) > 3.0).sum()
+        junk3 += V3 / max(R3, 1)
+        k = bh(p, 0.05)
+        if k:
+            topk_true = is_true[np.argsort(p)[:k]]
+            fdr_bh += (1 - topk_true).sum() / k
+    print(f"t_sig={t_sig}: junk@|t|>2 {junk2/reps:.2f} | junk@|t|>3 {junk3/reps:.2f} | "
+          f"BH(q=.05) FDR {fdr_bh/reps:.2f}")
+```
+
+**Expected reasoning.** The pattern is the zoo result: at t_sig = 2.0
+the discoveries are *mostly junk* (junk fraction ≈ 0.7–0.9 at |t| > 2,
+falling but still ≈ 0.4–0.6 at |t| > 3); at t_sig = 3.0 the |t| > 3
+rule keeps junk near ~0.2–0.3. BH at q = 0.05 keeps the *declared*
+FDR near the target only when the signals are strong enough for the
+p-value ordering to separate them; at t_sig = 2.0 its achieved FDR
+exceeds q (BH assumes the nulls dominate; a zoo with 10% strong
+signals plus 90% nulls at t=2 is exactly where its independence-flavor
+assumptions get strained). **The takeaway, the HLZ arithmetic in
+one table: the threshold that makes discoveries trustworthy is set by
+the family size m, not by the statistic.** That is the entire content
+of "t > 3".
+
+## E4 — the audit (exemplar)
+
+(a) 5 (days) + 12 (months) + 5×3 (day-horizons) + 12×3 (month-
+horizons) = **62 tests**, not 2. (If they also varied the sample
+period — as French-style studies do — the family is larger still.)
+(b) Expected false positives at 5%: 62 × 0.05 ≈ **3.1** — the two
+reported effects are inside the noise you'd expect from *nothing*.
+(c) The paper should report the family size and an adjusted verdict
+(Bonferroni at 62 gives α ≈ 0.0008 per test; BH over the 62 p-values
+is the FDR version) — and, ideally, a pre-registered primary
+hypothesis so the rest can be honestly labeled exploratory.

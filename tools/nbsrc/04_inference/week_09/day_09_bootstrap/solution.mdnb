@@ -1,0 +1,115 @@
+# Day 9 — Solution: The Bootstrap
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    px = get_prices("SPY", start="1993-01-01")
+else:
+    px = synthetic_prices(n_days=4000, n_assets=1, seed=59)
+r = px.iloc[:, 0].pct_change().dropna()
+x = r.values
+rng = np.random.default_rng(21)
+```
+
+## E1 — the engine
+
+```python
+def naive_boot(x, stat, B=2000, rng=rng):
+    n = len(x)
+    idx = rng.integers(0, n, size=(B, n))
+    res = x[idx]                                   # (B, n) resamples
+    return np.array([stat(res[b]) for b in range(B)])
+
+def block_boot(x, stat, b=22, B=2000, rng=rng):
+    n = len(x)
+    out = np.empty(B)
+    for bb in range(B):
+        nblocks = int(np.ceil(n / b))
+        starts = rng.integers(0, n, size=nblocks)
+        sample = np.concatenate([x[s:s+b] for s in starts])[:n]
+        out[bb] = stat(sample)
+    return out
+
+b_mean = naive_boot(x, np.mean, B=5000)
+se_boot, se_text = b_mean.std(), x.std(ddof=1)/np.sqrt(len(x))
+print(f"SE(mean): bootstrap {se_boot:.5f} vs textbook {se_text:.5f} "
+      f"(ratio {se_boot/se_text:.3f})")
+```
+
+**Expected reasoning.** Ratio within ~1% (Monte Carlo noise at B = 5000
+is ~0.4%: SE of the bootstrap SE ≈ SE/√B). When a statistic has a known
+SE, the bootstrap must reproduce it — that is the unit test of your
+resampler. Note the mean's SE barely depends on the distribution's
+shape (CLT); that is why the t CI is enough for means.
+
+## E2 — a CI with no formula
+
+```python
+sharpe = lambda v: v.mean()/v.std()
+boot_sh = naive_boot(x, sharpe, B=3000)
+sh0 = sharpe(x)
+ci = np.percentile(boot_sh, [2.5, 97.5])
+print(f"daily Sharpe {sh0:.4f} (annual {sh0*np.sqrt(252):.2f}); "
+      f"95% CI annual [{ci[0]*np.sqrt(252):.2f}, {ci[1]*np.sqrt(252):.2f}]")
+slightly_worse = (x.mean()-0.0002)/x.std()*np.sqrt(252)
+print(f"Sharpe of 'sample mean minus 2bp daily': {slightly_worse:.2f} "
+      f"-> inside CI? {ci[0]*np.sqrt(252) <= slightly_worse <= ci[1]*np.sqrt(252)}")
+```
+
+**Expected reasoning.** The CI is wide (typically ±0.5–1.0 on an annual
+Sharpe for a ~15-year sample) — a 0.8 Sharpe estimate is consistent with
+a strategy that is worse, better, or essentially zero. **The takeaway is
+the width, not the sign:** most published strategy Sharpe ratios have
+CIs that include the null. The "slightly worse" check is the practical
+move: ask whether a meaningfully different strategy sits inside your CI.
+
+## E3 — the block question
+
+```python
+for b in [1, 10, 22, 63, 252]:
+    s = block_boot(x, sharpe, b=b, B=1500)
+    print(f"b={b:4d}: SE {s.std():.4f}")
+acf_a = np.array([pd.Series(x).autocorr(k) for k in range(1, 21)])
+neff = len(x) / (1 + 2*acf_a.sum())
+print(f"|r| ACF sum(1..20) = {acf_a.sum():.3f} -> n_eff = {neff:,.0f} "
+      f"({neff/len(x):.2f}n)")
+```
+
+**Expected reasoning.** SE grows monotonically with b: from the naive
+level (b=1) up to ~1.2–1.8× by b ≈ 63, then flattens — the blocks are
+now longer than the dependence the data actually has. The n_eff from
+the |r| ACF (≈ 0.3–0.6n for clustered returns) predicts exactly this:
+SE_block ≈ SE_naive × √(n/n_eff). The flattening point is your honest
+b: anything longer just resamples the whole regime structure, and the
+CI starts reflecting *regime* uncertainty rather than sampling
+uncertainty — still useful, but it answers a different question.
+
+## E4 — the limits (exemplar)
+
+**Assumption.** The bootstrap assumes the sample is a fair draw from
+the population that generated it — exchangeable units, stable
+parameters. Strategy example: a backtest on 2015–2024 equity momentum.
+The resamples can reshuffle which years were good, but they cannot
+create a 2009 momentum crash; the CI says "given these regimes, the
+Sharpe is in [x, y]" — not "across all regimes."
+**Blind spots.** The sample's missing events are missing from every
+resample. Strategy example: a long-volatility book with a 5-year
+history that never saw a vol regime change; its bootstrap CI on max
+drawdown is built from drawdowns of similar depth — the tail of
+*drawdowns* is unestimated. Both limits mean the bootstrap CI is a
+*floor* on uncertainty for non-stationary data, and the professional
+move is to say which sample it describes.

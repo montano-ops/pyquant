@@ -1,0 +1,106 @@
+# Day 13 — Solution: Overlapping Observations
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+rng = np.random.default_rng(17)
+r_null = rng.normal(0, 0.01, 5000)          # pure null daily, true mean 0
+if DATA_SOURCE == "real":
+    r = get_prices("SPY", start="2000-01-01").iloc[:, 0].pct_change().dropna()
+else:
+    r = synthetic_prices(n_days=5000, n_assets=1, seed=63).iloc[:, 0].pct_change().dropna()
+```
+
+## E1 — the triangle, verified
+
+```python
+def acf(v, k):
+    v = np.asarray(v, float); v = v - v.mean()
+    return np.corrcoef(v[:-k], v[k:])[0, 1]
+
+for H in [5, 21]:
+    R = pd.Series(r_null).rolling(H).sum().dropna().values
+    a = [acf(R, k) for k in range(1, H)]
+    theory = [(H - k) / H for k in range(1, H)]
+    print(f"H={H:2d}: ACF {[f'{x:.2f}' for x in a[:4]]}  "
+          f"theory {[f'{x:.2f}' for x in theory[:4]]}  max dev {max(abs(x-y) for x, y in zip(a, theory)):.3f}")
+```
+
+**Expected reasoning.** Max deviation ~0.01–0.03 (sampling noise at
+n ≈ 5,000): the triangle ρ_k = (H−k)/H is the *exact* large-n ACF of
+overlapping iid daily sums. This identity is what makes the whole
+correction arithmetic instead of estimation.
+
+## E2 — the Monte-Carlo proof
+
+```python
+reps, H, n = 1000, 5, 5000
+res_naive, res_corr = 0, 0
+for _ in range(reps):
+    d = rng.normal(0, 0.01, n)
+    R = pd.Series(d).rolling(H).sum().dropna().values
+    m, s, N = R.mean(), R.std(), len(R)
+    t = m / (s / np.sqrt(N))
+    mult = np.sqrt(1 + 2*sum(np.corrcoef(R[:-k], R[k:])[0, 1] for k in range(1, H)))
+    res_naive += abs(t) > 1.96
+    res_corr += abs(t / mult) > 1.96
+print(f"null, H=5: naive rejects {res_naive/reps:.1%} | corrected rejects {res_corr/reps:.1%} (want ~5%)")
+```
+
+**Expected reasoning.** Naive rejection ≈ 25–35% (the naive t has
+variance ~H under the null); corrected ≈ 4.5–5.5%. **This is the
+whole lesson in one pair of numbers:** the correction takes a
+procedure that cries "significant" ~1 in 3 times on pure noise back
+to its promised 1 in 20. (Runtime note: ~1–2 min; this is the cost of
+proving a correction instead of trusting a formula.)
+
+## E3 — the real design
+
+```python
+for H in [5, 21]:
+    R = r.rolling(H).sum().dropna()
+    a = [acf(R.values, k) for k in range(1, H)]
+    mult = np.sqrt(1 + 2*sum(a))
+    t = R.mean() / (R.std()/np.sqrt(len(R)))
+    print(f"H={H:2d}: factor {mult:.2f} (sqrt(H)={np.sqrt(H):.2f}) | "
+          f"naive t {t:.2f} -> corrected {t/mult:.2f}")
+```
+
+**Expected reasoning.** Factor ≈ √H (within a few percent): the
+overlap dominates the correction even though the daily returns are
+not iid. The market's own clustering adds a little (the |r|
+dependence leaks into the overlapping means' ACF tail beyond k < H,
+which the H−1 truncation misses) — on real data the factor is
+typically 2–6% above √H, i.e., the true correction is *slightly
+bigger* than the iid theory. Direction: honest t is slightly smaller
+still.
+
+## E4 — the paper audit (exemplar)
+
+(a) 21-day holdings sampled weekly → each weekly observation overlaps
+the next ~18 of 21 days (12 of the 13 consecutive weekly obs pair
+share > 10 days): heavy overlap, ACF triangle with H ≈ 21.
+(b) Corrected t = 3.5/√21 ≈ **0.76** — not significant; the "8bp
+spread" is inside the noise.
+(c) Two honest fixes: (i) Newey–West SE with lags ≥ 20 on the weekly
+series (keep N = 1,400, correct the SE); (ii) non-overlapping
+sampling — take one observation every 21 days (N ≈ 67, honest SE,
+less power). Both are defensible; (i) is standard in the factor
+literature, (ii) is cleaner to explain.
+(d) One sentence: "Their t = 3.5 is an artifact of sampling a 3-week
+holding every week — corrected, it is t ≈ 0.8; the 8bp spread is
+indistinguishable from zero, and the paper's 'highly significant'
+should read 'not significant'."

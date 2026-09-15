@@ -1,0 +1,96 @@
+# Day 14 — Exercise: Week 9 Mixed Set
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+from scipy import stats
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    px = get_prices(["SPY", "QQQ"], start="2010-01-01")
+else:
+    px = synthetic_prices(n_days=3000, n_assets=2, seed=77, corr=0.6)
+    px.columns = ["SPY", "QQQ"]
+r = px.pct_change().dropna()
+rng = np.random.default_rng(91)
+```
+
+## M1 (L4) — Two designs, one number
+
+Strategy A = r.iloc[:,0] + a tiny persistent shift (add 0.00005 daily);
+benchmark B = r.iloc[:,1]. Compute the edge (mean of A−B) and its t
+three ways: (a) Welch on A vs B; (b) paired on A−B; (c) paired on
+A−B with the Bartlett correction using the ACF of (A−B). Which is the
+honest number, and does the correction change the verdict here?
+
+```python
+# YOUR CODE
+```
+
+## M2 (L4) — Three resamplers, one statistic
+
+On r.iloc[:,0]: the Sharpe ratio. Compute SE/CI three ways: (a) naive
+bootstrap, (b) block bootstrap b = 22, (c) the permutation-null
+"p-value" that the Sharpe > 0 under the label-shuffle null. Report
+all three and one sentence on which question each answers.
+
+```python
+# YOUR CODE
+```
+
+## M3 (L5) — A screen with a family
+
+Simulate: 50 candidate characteristics, each tested as "mean of the
+top half vs bottom half of a random split" of 500 stocks' forward
+returns (pure noise). (a) How many show |t| > 2 by noise?
+(b) Run BH at q = 0.05 on the 50 p's — how many survive? (c) The
+expected surviving set's composition, stated honestly.
+
+```python
+# YOUR CODE
+```
+
+## M4 (L5) — The overlapping audit
+
+H = 10 overlapping daily-sampled returns of r.iloc[:,0]: naive t on
+the mean, the Bartlett factor from the ACF (lags 1..9), corrected t.
+Then the same series sampled non-overlappingly (every 10th obs): N,
+t. Show the two designs agree on the information content.
+
+```python
+# YOUR CODE
+```
+
+## M5 (L7) — The paragraph
+
+Write one paragraph (5–8 sentences) that a reviewer could use to audit
+a *hypothetical* paper: "daily-sampled 21-day-holding momentum, N =
+2,000, 3 of 40 tested variations significant at 5%, t = 2.8 on the
+best." Use the week's vocabulary: design, overlap, family, correction,
+verdict.
+
+```python
+# Your answer:
+```
+
+## Hints
+
+- M1: the ACF of (A−B) is usually small (the market cancels) — the
+  correction may be small; that is the paired design paying off.
+- M3: "how many |t|>2 by noise" ≈ 50 × 0.0455 — but simulate it,
+  don't trust the formula; then BH.
+- M5: the 40 variations is the family; the 21-day overlap is the
+  correction; the t=2.8 needs both before it means anything.

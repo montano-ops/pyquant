@@ -1,0 +1,92 @@
+# Day 10 — Exercise: Permutation Tests
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+from scipy import stats
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    px = get_prices(["SPY", "TLT"], start="1990-01-01")
+else:
+    px = synthetic_prices(n_days=4000, n_assets=2, seed=61, corr=0.15)
+    px.columns = ["SPY", "TLT"]
+    px["TLT"] = -px["TLT"]      # model the negative link on the synth side
+r = px.pct_change().dropna()
+rng = np.random.default_rng(31)
+```
+
+## E1 (L4) — The engine, validated
+
+Implement `perm_test_two_sample(x, y, B, rng)` (shuffle the pooled
+values with fixed labels). Validate: (a) on two i.i.d. samples with the
+SAME mean, the permutation p is close to the Welch t p; (b) on 200
+repeated pure-null pairs, the p-values look uniform (plot a histogram
+in your head: any bucket far from 1/10?); (c) on samples with a real
+difference (shift y by 0.4% of its SD), the permutation p < 0.05 at a
+rate higher than 5%.
+
+```python
+# YOUR CODE
+```
+
+## E2 (L4) — Correlation by permutation
+
+Is corr(SPY, TLT) different from 0? Permute TLT's values (fix SPY),
+compute corr each time, B = 2000. (a) The observed p; (b) compare with
+the Fisher-z test: `t = rho*sqrt((n-2)/(1-rho^2))` — agree? (c) What
+would the naive-shuffle version have tested, and is that the question
+you want on daily returns?
+
+```python
+# YOUR CODE
+```
+
+## E3 (L5) — The dependence test, done right
+
+Question: does |r| (for SPY) have positive autocorrelation — i.e., is
+volatility clustering real in this sample? (a) Compute ρ₁(|r|). (b)
+Naive-shuffle null: shuffle |r|, B = 2000, p. (c) Block-shuffle null
+(b = 22): p. (d) Which p do you believe, and what does the gap between
+them measure? (e) If the block p is STILL small, what have you actually
+shown?
+
+```python
+# YOUR CODE
+```
+
+## E4 (L7) — Design a placebo
+
+A strategy buys the top decile by some characteristic and reports an
+annualized edge of 4% (t = 2.6). Design a permutation test that would
+be a fair null for the claim "the characteristic carries information,"
+and state precisely what a rejection of YOUR null does and does not
+establish.
+
+```python
+# Your answer:
+```
+
+## Hints
+
+- E1: use (count+1)/(B+1); for (b) keep B modest (500) to stay fast —
+  you're checking shape, not precision.
+- E2: permuting TLT against fixed SPY is the *two-sample* logic applied
+  to correlation; the null is "no linear association," not "no
+  association."
+- E3: the gap measures exactly the dependence you destroyed by naive
+  shuffling — the clustering's contribution to the statistic's
+  extremity.

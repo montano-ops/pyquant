@@ -1,0 +1,82 @@
+# Day 9 — Exercise: The Bootstrap
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    px = get_prices("SPY", start="1993-01-01")
+else:
+    px = synthetic_prices(n_days=4000, n_assets=1, seed=59)
+r = px.iloc[:, 0].pct_change().dropna()
+rng = np.random.default_rng(21)
+```
+
+## E1 (L4) — The engine
+
+Implement `naive_boot(x, stat, B, rng)` and `block_boot(x, stat, b, B, rng)`
+as functions (vectorize the naive version: draw a (B, n) index matrix in
+one call). Check: for `stat = mean`, the naive boot SE of the mean
+should match `s/√n` to within Monte Carlo noise (B = 5000). If it
+doesn't, your resampler is wrong.
+
+```python
+# YOUR CODE
+```
+
+## E2 (L4) — A CI with no formula
+
+Bootstrap the **Sharpe ratio** of r (annualized: multiply daily Sharpe
+by √252 — the bootstrap is on the daily statistic; annualization is a
+unit conversion, as always). Report the point estimate and the 95%
+percentile CI. Does it contain √252·(mean−0.0002)/sd, i.e. the Sharpe
+of a strategy that is *slightly worse* than the sample mean?
+
+```python
+# YOUR CODE
+```
+
+## E3 (L5) — The block question
+
+For the Sharpe ratio: naive boot SE vs block-boot SE at b = 10, 22,
+63, 252. (a) How much does the SE grow as b grows? (b) Also compute the
+ACF of |r| at lags 1–20 and its sum — does the clustering you measured
+in module 03 agree with how much the SE grew? (c) At what b does the
+SE stop changing much?
+
+```python
+# YOUR CODE
+```
+
+## E4 (L7) — The limits
+
+Write 3–4 sentences on the two honest limits of the bootstrap (its
+assumption and its blind spots), and give one concrete example of each
+from a strategy-research setting.
+
+```python
+# Your answer:
+```
+
+## Hints
+
+- E1: `idx = rng.integers(0, n, size=(B, n))`; then
+  `x[idx]` is a (B, n) array of resamples — stat along axis=1.
+  For block boot, each resample = concatenated blocks of length b,
+  trimmed back to n.
+- E3: the SE should roughly approach the naive SE × √(n/n_eff) —
+  compare with the n_eff you can compute from the |r| ACF (04.1 E3).
