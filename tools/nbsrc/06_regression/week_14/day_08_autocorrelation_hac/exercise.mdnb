@@ -1,0 +1,118 @@
+# Day 8 — Exercise: Autocorrelation & Newey–West
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+from scipy import stats
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+
+def ols_fit(x, y):
+    x = np.asarray(x, float); y = np.asarray(y, float)
+    n = len(x)
+    X = np.column_stack([np.ones(n), x])
+    XtX_inv = np.linalg.inv(X.T @ X)
+    b = XtX_inv @ X.T @ y
+    e = y - X @ b
+    s2 = e @ e / (n - X.shape[1])
+    se = np.sqrt(np.diag(s2 * XtX_inv))
+    return {"alpha": b[0], "beta": b[1], "se_beta": se[1], "resid": e, "X": X}
+
+def se_nw(X, e, L):
+    xe = X * e[:, None]
+    meat = xe.T @ xe
+    for l in range(1, L + 1):
+        w = 1 - l / (L + 1)
+        G = xe[l:].T @ xe[:-l]
+        meat += w * (G + G.T)
+    XtX_inv = np.linalg.inv(X.T @ X)
+    return np.sqrt(np.diag(XtX_inv @ meat @ XtX_inv))
+```
+
+## E1 (L3) — The ramp, predicted then measured
+
+Daily iid returns, n = 3000, σ = 1%. (a) Predict the ACF of the
+forward-21-day-sum series: formula from the lesson, lags 1, 10, 20,
+21. (b) Build the series, measure the ACF at those lags plus 40, and
+compare. (c) A "no-signal" diagnostic rule you can hand to a
+colleague: given a residual ACF shaped like ____, the violation is
+____ and L should be ____.
+
+```python
+# YOUR CODE
+```
+
+## E2 (L4) — The tournament of lags
+
+Generator: x_t = trailing-21-day return (persistent); y_t = forward
+21-day return built from FRESH daily noise — truth: β = 0 exactly.
+600 runs × (n = 3000). Per run fit y ~ x and compute SEs at
+L ∈ {0 (White), 5, 21, 42}. Report rejection rates of the TRUE null
+β = 0 at |t| > 1.96 for each L, plus mean SE / sd(β̂). Which L holds
+size, and what did L = 5 leave behind?
+
+```python
+# YOUR CODE
+```
+
+## E3 (L4) — Hand vs statsmodels
+
+On ONE run of the E2 generator: your se_nw at L = 21 vs
+`fit(cov_type="HAC", cov_kwds={"maxlags": 21})`. Match to 3+ decimals?
+If not, what scaling detail differs (and does it change any t by
+>1%)?
+
+```python
+# YOUR CODE
+```
+
+## E4 (L5) — A real long-horizon regression, two ways
+
+Real mode: SPY daily log prices 1993→. Synthetic: a 8000-day index.
+Build (i) monthly-overlapped: y_t = log P_{t+21} − log P_t, x_t =
+trailing 63-day return. Fit y ~ x; classical t, NW t at L = 21.
+Then (ii) the honest re-spec: NON-overlapping monthly observations
+(same regression, data counted once). Report both β̂ and t.
+Sentence: what did the overlap actually buy (sample size? information?
+neither?), and what did it nearly cost (the t)?
+
+```python
+# YOUR CODE
+```
+
+## E5 (L6) — Reading the famous tables
+
+A momentum paper reports 3-month-overlapping monthly returns, t = 9
+on the winner−loser spread. You don't have their SE flavor. Walk your
+desk through the reading discipline: which inflation factor do you
+apply mentally, which SE flavors could they plausibly have used, and
+why the finding survives anyway (think about magnitude) — while a
+t = 2.4 in the same table would deserve what treatment?
+
+```python
+# Your answer:
+```
+
+## Hints
+
+- E1(b): pandas `.rolling(21).sum().shift(-21)` on daily returns
+  builds forward sums; `.autocorr(l)` per lag; don't forget the
+  dropna and the lost last 21 obs.
+- E2: SE(β̂) should grow toward sd(β̂) as L passes the overlap; the
+  L ≥ 21 rows are the honest ones. If L = 42 ≈ L = 21, the mechanism
+  was fully captured by 21 — report that as evidence about the
+  mechanism's horizon.
+- E3: statsmodels HAC uses the same Bartlett weights; intercept-down
+  differences are usually a degrees-of-freedom correction flag.
+- E4(ii): resample to month-end first (`.resample("ME").last()`),
+  then pct/log-diff — equivalent information, counted once.

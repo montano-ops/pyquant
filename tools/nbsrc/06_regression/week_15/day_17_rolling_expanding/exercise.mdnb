@@ -1,0 +1,101 @@
+# Day 17 — Exercise: Rolling & Expanding Windows
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+from scipy import stats
+import matplotlib.pyplot as plt
+plt.rcParams["figure.figsize"] = (11, 4)
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+```
+
+## E1 (L4) — Rolling and expanding OLS, closed form
+
+Write `rolling_beta(r, m, W)` and `expanding_beta(r, m)` using the
+closed form (rolling/expanding cov over var — NO regression loops).
+Verify on a planted constant-β world that expanding β̂ → the truth
+and that rolling β̂ orbits it. One plot: three rolling curves
+(W = 63, 252, 1008) + the expanding curve + truth line.
+
+```python
+rng = np.random.default_rng(21)
+n = 3000
+m = rng.normal(0.0004, 0.011, n)
+y = 0.0002 + 1.10 * m + rng.normal(0, 0.009, n)
+r_s, m_s = pd.Series(y), pd.Series(m)
+# YOUR CODE
+```
+
+## E2 (L4) — The constant-world wander, quantified
+
+On the E1 world: compute per window W the 5th–95th percentile range
+of the rolling β̂, and the ±2·SE(W) analytic band width. Table: W,
+observed range, band width. Two sentences: (i) the match/mismatch
+between wiggle and band; (ii) why adjacent-window sharing makes the
+5–95% SURFACE look narrower than independent-window math suggests.
+
+```python
+# YOUR CODE
+```
+
+## E3 (L5) — Real rolling beta + the split test
+
+Real AAPL~SPY from 2015 (or synthetic pair): rolling 252-day β̂ with
+its ±2·SE band on ONE chart. Then the informal-Chow split at 2020-
+02-01 (pre-declared by calendar, NOT by the plot): β̂_pre, SE_pre,
+β̂_post, SE_post, z. Verdict sentence: did the beta change, or did
+the estimate breathe?
+
+```python
+# YOUR CODE
+```
+
+## E4 (L5) — Rolling alpha and the honesty band
+
+Same data: rolling 252-day **alpha** (annualized), with ±2·SE band,
+on one chart. Report the fraction of window-days where the band
+EXCLUDES zero. Sentence: how much "true alpha" does your favorite
+name have at any moment, by this test?
+
+```python
+# YOUR CODE
+```
+
+## E5 (L7) — The window question
+
+A PM: "For production: what window for our hedge betas, and don't say
+'it depends'." Give a number with a voiced trade-off (you should:
+pick W, state the SE, state the staleness risk, state the monitoring
+complement). Write the three-sentence answer you'd defend in the
+risk meeting.
+
+```python
+# Your answer:
+```
+
+## Hints
+
+- E1: `r.rolling(W).cov(m) / m.rolling(W).var()`; expanding twins via
+  `.expanding(60)`. Verify truth-recovery: expanding tail ≈ 1.10 ±
+  a shrinking band.
+- E2: band width = 4·σ_e/(σ_x√W): W = 252 → ≈ 4/√252 ≈ 0.25 wide;
+  the observed 5–95% range should be ~70–90% of that (overlapping
+  windows correlate the extremes; independent-window algebra would
+  overstate it).
+- E3: split-sample SEs from ols_fit per segment; the z uses INDEPENDENT
+  subsamples (the segment sums are disjoint — that's the point of
+  splits over rollings for inference).
+- E4: rolling alpha = rolling mean(y − β̂x)... careful: better rolling
+  intercept via α̂_t = ȳ_W − β̂_t·x̄_W — all rolling means; annualize
+  ×252. Band fraction excluding 0 is usually ~5–10% for megacaps.

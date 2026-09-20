@@ -1,0 +1,154 @@
+# Day 13 — Solution: Review (Week 14)
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+from scipy import stats
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+```
+
+## R1 — the cold dump (reference)
+
+- (a) meat = Σ e²xₓ′ + Σ_{l=1..L} (1−l/(L+1)) Σ e_te_{t−l}(x_tx_{t−l}′ +
+  x_{t−l}x_t′); Bartlett weights discount distant lags; truncate at the
+  mechanism's horizon.
+- (b) VIF_j = 1/(1−R²_j); R²_j from xⱼ on all other regressors.
+- (c) D_t = (e_t²/(k·s²))·h_t/(1−h_t)²; h from the hat matrix.
+- (d) e–ŷ (A1/A4 → respecify/White); e–time (A4/A5/breaks → White/NW/
+ decreases stability work); QQ (A6 → tolerate/t-aware); |e|–x (fan/
+ curvature).
+- (e) β̂ = base slope; γ̂ = level shift; δ̂ = slope shift; crisis slope =
+  β̂+δ̂, tested by t(δ̂).
+
+## R2 — the build, timed
+
+```python
+def ols_multi(X_cols, y):
+    X = np.column_stack([np.ones(len(y))] + [np.asarray(c, float) for c in X_cols])
+    y = np.asarray(y, float)
+    n, k = X.shape
+    XtX_inv = np.linalg.inv(X.T @ X)
+    b = XtX_inv @ X.T @ y
+    e = y - X @ b
+    s2 = e @ e / (n - k)
+    se = np.sqrt(np.diag(s2 * XtX_inv))
+    return {"b": b, "se": se, "resid": e, "X": X}
+
+def se_nw(X, e, L):
+    xe = X * e[:, None]
+    meat = xe.T @ xe
+    for l in range(1, L + 1):
+        w = 1 - l / (L + 1)
+        G = xe[l:].T @ xe[:-l]
+        meat += w * (G + G.T)
+    XtX_inv = np.linalg.inv(X.T @ X)
+    return np.sqrt(np.diag(XtX_inv @ meat @ XtX_inv))
+
+rng = np.random.default_rng(6)
+r = rng.normal(0, 0.01, 3000)
+x = pd.Series(r).rolling(21).sum().shift(1)
+y = 3.0 * x + pd.Series(rng.normal(0, 0.01, 3000)).rolling(21).sum().shift(-21)
+d = pd.concat([x, y], axis=1, keys=["x", "y"]).dropna()
+f = ols_multi([d["x"].values], d["y"].values)
+t_c = f["b"][1] / f["se"][1]
+t_nw = f["b"][1] / se_nw(f["X"], f["resid"], 21)[1]
+print(f"beta {f['b'][1]:.3f} (truth 3.0)   t classical {t_c:+.1f}   t NW(21) {t_nw:+.1f}")
+```
+
+**Expected.** β̂ ≈ 3.0 either way; t_classical grotesquely large (double
+digits — the overlap counts each day ~21 times); t_NW ~3–6× smaller and
+still honestly significant (truth planted strongly). Note the asymmetry
+vs days 8's *null* world: here a real effect survives repair — **the
+repair's job was never to kill findings, only to bill them correctly.**
+
+## R3 — arithmetic trio
+
+```python
+print(f"(a) ACF(21) = {(63-21)/63:.3f}  ACF(63) = 0.000")
+print(f"(b) SE = 1/(1*sqrt(800)*sqrt(1-0.81)) = {1/(np.sqrt(800)*np.sqrt(1-0.9**2)):.3f}")
+print(f"(c) E[beta] = {1.0*0.95:.2f}, bias 0.05 = {0.05/0.04:.1f} tournament-sd units")
+```
+
+**Read-back.** (a) 0.667, 0. (b) ≈ 0.081 — collinearity tripled the SE
+(from 0.035 at ρ=0). (c) 0.95, i.e. bias ≈ 1.25 sd of the estimator —
+*winsorization was a bias-for-variance purchase, and quoting only the sd
+cut is the brochure version.*
+
+## R4 — the dress rehearsal (exemplar run)
+
+```python
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+import matplotlib.pyplot as plt
+plt.rcParams["figure.figsize"] = (10, 7)
+
+if DATA_SOURCE == "real":
+    rr = np.log(get_prices(["AAPL", "SPY"], start="2015-01-01")).diff().dropna()
+else:
+    p = synthetic_prices(n_days=2500, n_assets=2, seed=23, corr=0.5)
+    rr = np.log(p).diff().dropna(); rr.columns = ["AAPL", "SPY"]
+
+x, y = rr["SPY"].values, rr["AAPL"].values
+f = ols_multi([x], y)
+e = f["resid"]
+
+# panels (demands) + influence + interaction
+mv = rr["SPY"].abs().rolling(21).mean()
+D = (mv > mv.quantile(0.90)).astype(float)          # pre-declared 90th pct
+XtX_inv = np.linalg.inv(f["X"].T @ f["X"])
+h = np.einsum("ti,ij,tj->t", f["X"], XtX_inv, f["X"])
+k, n = 2, len(x)
+s2 = e @ e / (n - k)
+Dc = (e**2 / (k * s2)) * h / (1 - h)**2
+top5 = pd.Series(Dc, index=rr.index).nlargest(5)
+keep = ~rr.index.isin(top5.index)
+g = ols_multi([x[keep]], y[keep])
+fx = ols_multi([x, D.values, (D * rr["SPY"]).values], y)
+
+fig, ax = plt.subplots(2, 2)
+ax[0,0].scatter((f["X"] @ f["b"]), e, s=4, alpha=0.3); ax[0,0].set_title("e vs fitted")
+ax[0,1].plot(rr.index, e, lw=0.4); ax[0,1].set_title("e vs time")
+stats.probplot(e, dist="norm", plot=ax[1,0]); ax[1,0].set_title("QQ normal")
+ax[1,1].scatter(x, np.abs(e), s=4, alpha=0.3); ax[1,1].set_title("|e| vs x")
+plt.tight_layout(); plt.show()
+print(f"beta {f['b'][1]:.3f} SE(c) {f['se'][1]:.4f} | no-top5D {g['b'][1]:.3f} (shift {(g['b'][1]-f['b'][1])/f['se'][1]:+.2f} SE)")
+print(f"interaction: calm {fx['b'][1]:.3f}, shift {fx['b'][3]:+.3f}, level {fx['b'][2]:+.4f}")
+```
+
+**Exemplar finding.** "β̂ ≈ 1.2; panels demand White (mild fan + vol
+clusters) — SE flavor set accordingly (ratio ~1.1); influence shift small
+(<0.3 SE) so the fit is not a days-artifact; the pre-declared stress
+interaction gives β_calm ≈ 1.1, β_stress ≈ 1.4–1.5 with δ̂ significant —
+reported with the fan of alternative thresholds in the annex (day 12
+discipline)." **This two-sentence block is the day-14 mini-project's
+required format — rehearse until boring.**
+
+## R5 — the four questions (exemplar)
+
+1. **"Bootstrapped SEs" — which bootstrap, which block length, on the
+   OVERLAPPED series?** (Day 8: iid bootstrap on autocorrelated data
+   reproduces the classical error; what you need is block/bootstrap
+   matched to the overlap — or simply NW, which we'll benchmark
+   against your SE table.)
+2. **"Outliers removed per standard practice" — which rule, declared
+   when, and the four-column table (raw/clip/delete/delete-logged)**
+   for the headline coefficient. (Days 10–11: removal is a modeling
+   claim; the protocol is influence-shift reporting, and phenomenon-tail
+   deletions are not 'practice'.)
+3. **The regime analysis is the finding, not an annex**: what are
+   β_calm / β_stress with pre-declared thresholds — and why was the
+   choice of what to feature made after seeing both? (Day 12: δ̂ and its
+   t, or the pooled coefficient is a base-vs-average confusion.)
+4. **VIFs and the joint F for every multi-factor row.** (Day 9: your
+   t > 4 rows might share one factor wearing two names; and your
+   'diversified' conclusion depends on loadings surviving their own
+   SE flavor, see question 1.)

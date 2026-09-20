@@ -1,11 +1,11 @@
 # ROADMAP — The Complete Curriculum
 
 This is the canonical map of the course: every module, every week, every day,
-every paper, and how they connect. Modules 00–03 are fully authored (day
-folders contain lesson / exercise / solution / review, all solution
-notebooks execute end-to-end). Modules 04–05 are partially authored
-(module 04 week 8; module 05 week 11); modules 04–15 are otherwise fully
-**specified** at the day level below and
+every paper, and how they connect. Modules 00–03 and 06 are fully authored
+(day folders contain lesson / exercise / solution / review, all solution
+notebooks execute end-to-end in synthetic mode). Modules 04–05 are partially
+authored (module 04 week 8; module 05 week 11); modules 04–15 are otherwise
+fully **specified** at the day level below and
 in each module's README — day folders are authored to the same standard
 progressively (see [AUTHORING.md](AUTHORING.md) for the exact template;
 the status table marks each module's state).
@@ -63,7 +63,7 @@ speed: the retrieval practice, spacing, and re-derivations ARE the course.
 | 03 | [Statistics](03_statistics/) | 6–7 | ✅ |
 | 04 | [Statistical inference](04_inference/) | 8–10 | 🟨 (week 8 authored; 9–10 specced) |
 | 05 | [Financial data](05_financial_data/) | 11–12 | 🟨 (week 11 authored; 12 specced) |
-| 06 | [Regression](06_regression/) | 13–15 | 🔲 |
+| 06 | [Regression](06_regression/) | 13–15 | ✅ |
 | 07 | [Asset pricing & factors](07_asset_pricing/) | 16–19 | 🔲 |
 | 08 | [Time-series analysis](08_time_series/) | 20–22 | 🔲 |
 | 09 | [Financial econometrics](09_financial_econometrics/) | 23–27 | 🔲 |
@@ -229,7 +229,7 @@ module README.*
 | 05.13 | Review 🔲 | Retrieval + interleaved problems | — |
 | 05.14 | Module checkpoint: bias audit report 🔲 | Formal audit of your panel: survivorship, selection, timestamps, actions | — |
 
-## Module 06 — Regression (Weeks 13–15) 🔲
+## Module 06 — Regression (Weeks 13–15) ✅
 
 *Goal: OLS from the inside out — you derive it with NumPy before statsmodels
 hides it — and you know exactly which standard errors financial data demands.*

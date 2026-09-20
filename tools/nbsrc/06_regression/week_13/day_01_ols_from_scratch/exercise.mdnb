@@ -1,0 +1,95 @@
+# Day 1 — Exercise: OLS from Scratch
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices, synthetic_returns
+```
+
+## E1 (L4) — Your `ols()`, from a blank cell
+
+Before any scaffold: write `ols(x, y)` from the lesson's math — ones
+column, `np.linalg.solve`, return (alpha, beta). Then generate the
+planted world below and check: do you recover β = 1.20, α = 0.0002
+within sampling error (SE on β̂ here ≈ 0.01)?
+
+```python
+rng = np.random.default_rng(7)
+m = rng.normal(0.0005, 0.010, 1500)                 # the "market"
+e = rng.normal(0, 0.008, 1500)                      # idiosyncratic noise
+y = 0.0002 + 1.20 * m + e                           # ONE stock, truth: alpha=0.0002, beta=1.20
+
+# YOUR CODE: fit by hand. What do you get? How far off?
+```
+
+## E2 (L4) — Against statsmodels, to machine precision
+
+Now import statsmodels, fit the same regression, and *prove* your
+coefficients match (max abs difference < 1e-10). The point is not
+distrust of the library — it is that the library stops being magic.
+
+```python
+# YOUR CODE (allowed: import statsmodels.api as sm)
+```
+
+## E3 (L5) — QQQ on the market, both worlds
+
+Real mode: pull QQQ and SPY adjusted closes from 2010, log returns,
+fit QQQ ~ SPY. Synthetic mode: `synthetic_prices(n_days=3800,
+n_assets=2, seed=11, corr=0.64, drift_spread=0.0001)`, rename the
+columns, same code after that. Report annualized α and β, one line of
+interpretation each (what does β = 1.2 mean economically?).
+
+```python
+# YOUR CODE
+```
+
+## E4 (L7) — Break it informatively, twice
+
+(a) Refit your E1 regression *without* the intercept (one-column X).
+Where did the bias go — α or β, and why? (b) Fit the same y on a
+*price level* x instead of a return (cumulate m into a random-walk
+price, and y into a price, then regress levels). Report R² from the
+correlation squared. One sentence each: what rule did each failure
+teach?
+
+```python
+# YOUR CODE
+```
+
+## E5 (L6) — The desk question
+
+A PM says: "I don't need to know how β̂ is computed; I need to know
+when the number is wrong." Given what you know after today: list the
+three failure channels through which a *correctly computed* β̂ can
+still be the wrong number for the PM's decision. (One line each —
+days 3–5 will quantify them.)
+
+```python
+# Your answer:
+```
+
+## Hints
+
+- E1: `np.linalg.solve(A, b)` solves Ax = b. Your A is (XᵀX), your b
+  is (Xᵀy). Recover = |β̂ − 1.2| within ~2 SE of β̂; here SE(β̂) ≈
+  σ_e/(σ_m√n) — compute it and compare the error to it.
+- E2: `sm.OLS(y, sm.add_constant(x)).fit().params` returns [const, x].
+- E4a: with no intercept, b = Σxy/Σx². If E[y] ≠ 0, the mean of y
+  leaks into b. E4b: levels of integrated series correlate spuriously;
+  check the residual ACF, not just R².
+- E5: think along (i) sampling error, (ii) which time window, (iii)
+  what the regressor leaves out.

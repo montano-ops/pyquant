@@ -1,0 +1,240 @@
+# Day 14 — Solution: The Predictive Regression
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+from scipy import stats
+import matplotlib.pyplot as plt
+plt.rcParams["figure.figsize"] = (11, 4)
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices, synthetic_returns
+from qrc.universe import load_universe
+
+def ols_multi(X_cols, y):
+    X = np.column_stack([np.ones(len(y))] + [np.asarray(c, float) for c in X_cols])
+    y = np.asarray(y, float)
+    n, k = X.shape
+    XtX_inv = np.linalg.inv(X.T @ X)
+    b = XtX_inv @ X.T @ y
+    e = y - X @ b
+    s2 = e @ e / (n - k)
+    se = np.sqrt(np.diag(s2 * XtX_inv))
+    r2 = 1 - (e @ e) / ((y - y.mean()) @ (y - y.mean()))
+    return {"b": b, "se": se, "r2": r2, "resid": e}
+```
+
+## Log-first hypotheses (exemplar)
+
+(a) vol sign: NEGATIVE — high-vol months predict lower next-month returns
+(the low-volatility anomaly flavor: leverage constraints + lottery demand
+bid up winners of the vol tournament). (b) volume sign: NEGATIVE-ish but
+weak — attention spikes (high DV) precede flat-to-lower returns in
+retail-heavy names, but at megacap scale the effect is anyone's guess.
+
+## Part 1 — the panel with shift discipline
+
+```python
+if DATA_SOURCE == "real":
+    names = load_universe("research50")[:50]
+    px = get_prices(names, start="2010-01-01")
+    vol_shares = get_prices(names, start="2010-01-01", field="volume")
+    rets_d = np.log(px).diff()
+    dv_d = px.ffill() * vol_shares                        # daily dollar volume
+else:
+    names = [f"S{i}" for i in range(50)]
+    rets_d = synthetic_returns(n_days=3600, n_assets=50, seed=8, corr=0.4,
+                               drift_spread=0.0002)
+    rets_d.columns = names
+    rng = np.random.default_rng(8)
+    adv = np.exp(rng.normal(np.log(1e8), 0.8, len(names)))
+    vol_d = adv * np.exp(rng.normal(0, 0.4, rets_d.shape))
+    dv_d = pd.DataFrame(synthetic_prices(n_days=3600, n_assets=50, seed=8,
+                                         corr=0.4).values * vol_d,
+                        index=rets_d.index, columns=names)
+
+per = rets_d.index.to_period("M")
+r_m = rets_d.groupby(per).sum()                            # monthly log returns
+vol_m = rets_d.groupby(per).std() * np.sqrt(21)            # realized vol per month
+dv_m = dv_d.groupby(per).median()
+r_m.index, vol_m.index, dv_m.index = [q.to_timestamp() for q in r_m.index], \
+    [q.to_timestamp() for q in vol_m.index], [q.to_timestamp() for q in dv_m.index]
+
+predictors = pd.DataFrame({"vol": vol_m.stack(), "ldv": np.log(dv_m).stack()})
+frame = predictors.join(r_m.stack().rename("r_same"))
+frame["r_next"] = frame.groupby(level=1)["r_same"].shift(-1)
+frame = frame.dropna()
+frame.index.names = ["month", "name"]
+
+# shift audit: predictors of month t use ONLY month-t daily rows; response is month t+1
+t0 = r_m.index[10]
+name0 = names[0]
+d_in_pred = rets_d.loc[rets_d.index.to_period("M") == t0.to_period("M"), name0]
+d_in_resp = rets_d.loc[rets_d.index.to_period("M") == (t0 + pd.offsets.MonthBegin(1)).to_period("M"), name0]
+print(f"audit: predictors {name0} month {t0.date()}: daily rows {d_in_pred.index[0].date()}..{d_in_pred.index[-1].date()}")
+print(f"audit: response month {(t0 + pd.offsets.MonthBegin(1)).date()}: rows {d_in_resp.index[0].date()}..{d_in_resp.index[-1].date()}")
+print("audit: last predictor date < first response date:", d_in_pred.index[-1] < d_in_resp.index[0])
+```
+
+**Expected reasoning.** The audit prints true — the entire study's
+provenance in three lines. Construction choices to log: month t vol is
+*within-month* realized vol (√21 scale for comparability); r_same kept
+but unused in fits (only r_next predicts); the frame drops each name's
+last month (no r_next exists — those rows are construction casualties,
+not data problems). **Synthetic-planters note: at this point in the
+notebook the response series has NOT yet been touched by any planting —
+fit first, reveal later. But for the reveal mechanism, see Part 5:**
+the synthetic run re-generates the frame once with the planted vol effect
+so this solution can be checked for recovery; your exercise run planted
+nothing you knew about.
+
+## Part 2 — the regressions
+
+```python
+if DATA_SOURCE == "synthetic":   # plant: -40bp of r_next per +1sd of within-name vol; volume: NOTHING
+    rng = np.random.default_rng(7)
+    zv = frame.groupby(level=1)["vol"].transform(lambda s: (s - s.mean()) / s.std())
+    frame["r_next"] = frame["r_next"] - 0.004 * zv + rng.normal(0, 0.0005, len(frame))
+
+rows = {}
+for nm, g in frame.groupby(level=1):
+    if len(g) < 40:
+        continue
+    zvol = (g["vol"] - g["vol"].mean()) / g["vol"].std()
+    zdv = (g["ldv"] - g["ldv"].mean()) / g["ldv"].std()
+    f = ols_multi([zvol, zdv], g["r_next"].values)
+    rows[nm] = [f["b"][1], f["b"][2], f["b"][1]/f["se"][1], f["b"][2]/f["se"][2], f["r2"]]
+res = pd.DataFrame(rows, index=["b_vol", "b_dv", "t_vol", "t_dv", "R2"]).T
+print(res.describe().loc[["mean", "50%"]].round(4).to_string())
+
+def synth_report(slopes):
+    m = slopes.mean(); s = slopes.std(ddof=1) / np.sqrt(len(slopes))
+    return m, s, m / s
+m_v, s_v, t_v = synth_report(res["b_vol"])
+m_d, s_d, t_d = synth_report(res["b_dv"])
+print(f"\ncross-name: vol slope {m_v*1e4:+.1f} bp/sd   SE {s_v*1e4:.1f}   t {t_v:+.2f}")
+print(f"cross-name: dv  slope {m_d*1e4:+.1f} bp/sd   SE {s_d*1e4:.1f}   t {t_d:+.2f}")
+med_corr = frame.groupby(level=1).apply(lambda g: g["vol"].corr(g["ldv"])).median()
+print(f"median corr(vol, ldv) {med_corr:+.2f} -> VIF {1/(1-med_corr**2):.2f}")
+```
+
+**Expected pattern (synthetic, planted).** Cross-name vol slope ≈ −40
+bp/sd with t comfortably past −3: **recovered.** dv slope ≈ 0, |t| < 2:
+**correctly not discovered.** Per-name t_vol's, though, hover mostly in
+±2 — the per-name evidence is individually weak and the signal emerges
+only in the cross-name synthesis: that contrast IS the lesson (*n_names ×
+modest-consistency* is how panel studies buy power; day 15 prices it
+formally). VIF ≈ 1.0–1.1 (monthly vol and log dollar volume correlate
+little within-name over time — in cross-section they correlate hugely,
+and day 15 will meet THAT collinearity). SE flavor: per-name White is the
+working baseline; monthly non-overlapped data keeps A5 quiet; the
+cross-sectional SE of the mean slope already absorbs same-month
+cross-correlation (day 15's sentence, pre-learned).
+
+**Real mode.** Same code. Typical outcome for megacaps 2010→: vol slope
+distribution centered slightly negative (low-vol effect visible but
+modest in the largest 50 names — the anomaly's home is broader
+universes), dv slope a coin toss; honest write-up: both reported with
+CIs, magnitudes converted (Part 3), no winner declared.
+
+## Part 3 — R², honestly economic
+
+```python
+zs_q = frame.groupby(level=1)["vol"].transform(lambda s: (s - s.mean()) / s.std())
+iqr_z = zs_q.groupby(level=0).quantile(0.75).mean() - zs_q.groupby(level=0).quantile(0.25).mean()
+iqr_z = 1.35  # IQR of a standard normal; per-name z is near-normal by construction
+effect_bp_iqr = m_v * iqr_z * 1e4
+print(f"median per-name R2: {res['R2'].median():.4f}")
+print(f"vol slope {m_v*1e4:+.1f} bp per 1sd of within-name realized vol")
+print(f"per IQR (~1.35sd): {effect_bp_iqr:+.0f} bp of next-month return")
+```
+
+**Expected pattern.** Median R² ≈ 0.005–0.01 **with a real, planted,
+economically meaningful effect inside the data.** That is the sentence the
+whole course built toward: at monthly frequency, R² ~ 0.01 corresponds to
+~50bp/IQR of conditional performance — larger than most costs you haven't
+yet modeled (module 12), invisible to any R²-snob. R² worship says
+"useless"; the t-stat and the bp/IQR number say "salvageable, verify OOS".
+**Report both numbers, always: the fit sentence (R²) and the economics
+sentence (bp/IQR). Papers that show only the first are hiding; papers
+that show only the second are selling.**
+
+## Part 4 — stability
+
+```python
+half = frame.index.get_level_values(0).unique()
+cut = half[len(half) // 2]
+splits = {}
+for nm, g in frame.groupby(level=1):
+    if len(g) < 40 or nm not in res.index:
+        continue
+    out = []
+    for _, gg in g.groupby(g.index.get_level_values(0) > cut):
+        gg = gg if len(gg) >= 20 else None
+        if gg is None:
+            out.append(np.nan); continue
+        zv = (gg["vol"] - gg["vol"].mean()) / gg["vol"].std()
+        zd = (gg["ldv"] - gg["ldv"].mean()) / gg["ldv"].std()
+        out.append(ols_multi([zv, zd], gg["r_next"].values)["b"][1])
+    splits[nm] = out
+sp = pd.DataFrame(splits, index=["first", "second"]).T.dropna()
+agree = (np.sign(sp["first"]) == np.sign(sp["second"])).mean()
+print(f"sign agreement first/second half: {agree:.0%} across {len(sp)} names (noise benchmark: 50%)")
+
+nm0 = res.index[0]
+g = frame.xs(nm0, level=1)
+zv = (g["vol"] - g["vol"].mean()) / g["vol"].std()
+roll_b = []
+idx = []
+for j in range(36, len(g)):
+    win = g.iloc[j-36:j]
+    roll_b.append(ols_multi([((win["vol"]-win["vol"].mean())/win["vol"].std()),
+                             ((win["ldv"]-win["ldv"].mean())/win["ldv"].std())],
+                            win["r_next"].values)["b"][1])
+    idx.append(g.index[j])
+plt.plot(idx, np.array(roll_b) * 1e4, lw=1)
+plt.axhline(0, color="k", lw=0.6); plt.ylabel("bp/sd"); plt.title(f"rolling 36m vol slope: {nm0}")
+plt.show()
+```
+
+**Expected pattern.** Sign agreement ~60–75% synthetic-planted (well above
+the 50% noise line — with ≈50 names that's itself a meta-test at
+p ≈ 0.01–0.05 via binomial); the rolling plot for one name wanders and
+sign-flips: **per-name time-varying-point estimates are mostly estimation
+noise in motion (day 7's rolling-beta lesson, regression edition); the
+STABLE object is the cross-name average.** Real mode's agreement is
+typically lower (weaker true effect in megacaps) — reported, not
+rationalized.
+
+## Part 5 — the audit + the reveal (exemplar)
+
+**Audit.** (i) Multiple testing: two regressors pre-declared + the log
+records zero informal hunts (two hypotheses, no correction needed at
+Bonferroni 0.025; state it). (ii) Persistent regressor: vol is
+AR(1) ≈ 0.7+ monthly — a Stambaugh-flavored caution: predictive slopes on
+persistent x are biased small-sample and the t's read optimistically;
+replication at annual horizon would be the mitigation. (iii) Survivorship:
+research50 = today's large survivors — the vol effect in distress-prone
+names is sampled away; direction: measured effect likely *understates*
+the broad-universe anomaly. (iv) Power: 40 names × ~150 months, per-name
+t's ≈ ±1 — only the cross-name synthesis speaks; single-name conclusions
+reported as noise. (v) Same-month cross-correlation: per-name fits share
+market months — handled by the cross-sectional SE (day 15 formalizes);
+pooled OLS SEs would lie by √N and were NOT used.
+
+**The synthetic reveal (run last):** planted vol effect = **−40bp per 1σ**,
+planted volume effect = **zero**. Recovery check: |m_v + 40| within ~2
+cross-sectional SEs and |t_dv| < 2 = pass. If Part 2 "found" a volume
+effect |t| > 2 in synthetic mode, the correct next file was the error
+log, not the results section — under the planted null, that t is the
+day-4 tournament happening to you personally.

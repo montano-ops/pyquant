@@ -1,0 +1,103 @@
+# Day 2 — Exercise: Coefficients & Residuals
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    px = get_prices(["AAPL", "SPY"], start="2010-01-01")
+else:
+    px = synthetic_prices(n_days=3800, n_assets=2, seed=23, corr=0.5,
+                          drift_spread=0.00012)
+    px.columns = ["AAPL", "SPY"]
+
+r = np.log(px).diff().dropna()
+```
+
+## E1 (L3) — Decompose AAPL, by hand first
+
+Fit AAPL ~ SPY (your day-1 `ols` or statsmodels). Then compute, three
+ways, and confirm they agree: (a) α̂ from the regression; (b) ȳ − β̂x̄
+from the sample means; (c) the mean of the residual *plus* α̂ — wait,
+no: the mean of y minus the mean of the fitted values' explained
+part. Write the α̂ as %/day and %/yr, one interpretation line.
+
+```python
+# YOUR CODE
+```
+
+## E2 (L4) — The orthogonality audit
+
+Compute residuals e = y − ŷ. Verify numerically, printing each with a
+tolerance: (i) Σe ≈ 0; (ii) Σ x·e ≈ 0; (iii) var(y) = var(ŷ) + var(e).
+Then REFIT without an intercept and rerun (i) and (ii) — print how
+badly each fails. One sentence: which assumption did removing the
+ones column violate?
+
+```python
+# YOUR CODE
+```
+
+## E3 (L4) — Idio vs total vol, and the de-marketed position
+
+Report total vol, systematic vol (std of ŷ), and idio vol (std of e),
+annualized, for your asset. Then construct the de-marketed return
+series r_dm = r_AAPL − β̂·r_SPY (equivalently α̂ + e — verify!) and
+show its correlation with SPY ≈ 0. What did you just build, in
+strategy language?
+
+```python
+# YOUR CODE
+```
+
+## E4 (L5) — The event-study primitive
+
+Pick the 10 biggest |e| days for your asset. For each, print date, e,
+and the market return that day. Questions: are these days market
+days? (They should NOT be — what identity guarantees that, on
+average?) If these were earnings days, what are you 3 lines of code
+away from doing?
+
+```python
+# YOUR CODE
+```
+
+## E5 (L7) — False-conclusion watch
+
+A seller of a "market-neutral AAPL strategy" shows you a backtest of
+r_dm from E3 with a lovely Sharpe and says "zero market exposure — β
+is exactly zero." Two precisely-worded objections, one statistical,
+one economic.
+
+```python
+# Your answer:
+```
+
+## Hints
+
+- E1: all three routes to α̂ are the same identity rearranged; part
+  (c) is: mean(y) − mean(ŷ − α̂)... simpler: mean(y) − β̂·mean(x) IS
+  (b). The point is to see α̂ = ȳ − β̂x̄ from three sides.
+- E2: use np.allclose with atol=1e-10; the no-intercept refit breaks
+  (i) visibly if mean(x) ≠ 0, since x'e = −n·intercept·mean... derive
+  it: without intercept, x'e = 0 still holds (first-order condition!)
+  but Σe ≠ 0 in general.
+- E3: corr(r_dm, r_SPY) ≈ 0 exactly in-sample because corr(e, x) = 0
+  and α̂ is a constant.
+- E4: identity (ii) — e is orthogonal to x — so big-|e| days are
+  cross-sectionally NOT big-|x| days on average... but check: are
+  they? A scatter of e vs x will show you the variance fan first.

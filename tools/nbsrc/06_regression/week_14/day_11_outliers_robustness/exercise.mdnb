@@ -1,0 +1,113 @@
+# Day 11 — Exercise: Outliers & Robustness: Winsorizing
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+from scipy import stats
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+
+def ols_fit(x, y):
+    x = np.asarray(x, float); y = np.asarray(y, float)
+    n = len(x)
+    X = np.column_stack([np.ones(n), x])
+    XtX_inv = np.linalg.inv(X.T @ X)
+    b = XtX_inv @ X.T @ y
+    e = y - X @ b
+    s2 = e @ e / (n - 2)
+    se = np.sqrt(np.diag(s2 * XtX_inv))
+    return {"b": b, "se": se, "resid": e}
+
+def winsor(s, p=0.01):
+    lo, hi = np.quantile(s, [p, 1 - p])
+    return np.clip(s, lo, hi)
+```
+
+## E1 (L3) — One giant day, by hand
+
+World: β = 1.0 truth, 1000 days, ε ~ N(0, 1%²). Plant ONE corrupted
+day: y[500] = −0.30 (a −30% "return" — a bad split adjustment, say).
+Fit raw; fit with y winsorized at 1%/99%; fit with that day deleted.
+Report β̂ and SE from each. Which repair recovered the truth, and what
+did deletion do to n and to the calendar?
+
+```python
+# YOUR CODE
+```
+
+## E2 (L4) — The stability tournament
+
+Fat-tailed world: 1000 days, ε ~ t(4) scaled to σ = 1.2% (real fat
+tails — no corruption). β = 1.0. 500 runs; per run: raw β̂ vs
+y-winsorized β̂ (1%/99%). Report sd(raw β̂'s) vs sd(winsorized β̂'s)
+and mean bias of each. Question: winsorizing y traded WHAT for the
+sd reduction — and for which downstream use is that trade forbidden?
+
+```python
+# YOUR CODE
+```
+
+## E3 (L5) — The asymmetric-stakes audit
+
+Real mode: TSLA ~ SPY 2015→ (or the wild synthetic pair). Fit raw;
+fit with y winsorized 1%/99%; fit with x winsorized; fit with both.
+Four β̂'s in a table. Your name's beta is used for (i) a calm-regime
+mean-variance optimizer and (ii) a crisis-hedge sizing rule. Which
+column serves which use, and why?
+
+```python
+# YOUR CODE
+```
+
+## E4 (L6) — The FF-style characteristic clip
+
+Simulate a 200-stock cross-section: next-month returns r_i = 0.004 +
+0.010·z_i + noise, where z_i is a characteristic with a heavy right
+tail (lognormal noise; z standardized). Add 2% "bad prints" in z
+(×100 magnitude). FM-coming day's primitive: one cross-sectional
+regression r ~ z, raw vs x-winsorized. Then REMOVE the bad prints
+instead. Which repair is defensible for the bad prints, and what does
+x-winsorizing do even with CLEAN z — who sits at the clipped percentiles?
+
+```python
+# YOUR CODE
+```
+
+## E5 (L7) — The spec-mining confession
+
+You have raw t = 1.7. Your colleague runs: winso 1% t = 2.1; winso
+2.5% t = 2.4; winso 5% t = 1.9 — and proposes reporting "robust to
+multiple winsorization levels (t = 2.1–2.4)". Write the methods
+paragraph YOU would be willing to sign, and the sentence that stops
+the friendly fraud.
+
+```python
+# Your answer:
+```
+
+## Hints
+
+- E1: the corrupted day alone should move β̂ by several SE. Winsor
+  should neutralize it (quantile of 1000 points puts the clip ABOVE
+  the corruption if it's the single worst point — check with
+  np.quantile first; if not, the 1% clip just deleted 10 good points
+  AND kept the bad one — look!).
+- E2: sd drops typically 15–30%; the bias is toward LOWER |β| when
+  tails carry signal (β=1 world: watch E[β̂_winso] vs 1.0);
+  "forbidden use": hedging crash risk (the clipped beta is the calm
+  beta).
+- E4: with 2% corruption, 1% winsor leaves half the bad prints IN;
+  the defensible repair for provable bad prints is surgical removal
+  logged in the data-quality report (module 05!), not an indiscriminate
+  clip. Clean-z winsorizing costs the extreme names' information —
+  measure the slope change.

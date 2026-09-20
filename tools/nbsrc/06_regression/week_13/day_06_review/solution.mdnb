@@ -1,0 +1,145 @@
+# Day 6 — Solution: Review (Week 13)
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+from scipy import stats
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+```
+
+## R1 — the cold dump (reference)
+
+- β̂ = cov̂(x,y)/vâr(x), α̂ = ȳ − β̂x̄
+- SE(β̂) = σ̂_e / (σ̂_x √n)
+- Sandwich: (XᵀX)⁻¹ [Σ e_t² x_tx_t′] (XᵀX)⁻¹ (White meat, HC0; HC1 =
+  n/(n−k) ×)
+- OVB: plim β̂ = β + γ·cov(x, omitted)/var(x)
+
+**Common misses logged by past learners:** dropping the √n (SE formula);
+thinking White's meat is Σ e_t x_tx_t′ (that forgets the square — it is
+e_t², a variance, not e_t, a first moment); writing the OVB with the
+correlation instead of the *regression coefficient* of omitted on
+included (they coincide only at equal variances).
+
+## R2 — the timing drill
+
+```python
+def ols_fit(x, y):
+    x = np.asarray(x, float); y = np.asarray(y, float)
+    n = len(x)
+    X = np.column_stack([np.ones(n), x])
+    XtX_inv = np.linalg.inv(X.T @ X)
+    b = XtX_inv @ X.T @ y
+    e = y - X @ b
+    s2 = e @ e / (n - 2)
+    se_c = np.sqrt(np.diag(s2 * XtX_inv))
+    meat = X.T @ (e[:, None] ** 2 * X)
+    se_w = np.sqrt(np.diag(XtX_inv @ meat @ XtX_inv)) * np.sqrt(n / (n - 2))
+    r2 = 1 - (e @ e) / ((y - y.mean()) @ (y - y.mean()))
+    return {"b": b, "se_c": se_c, "se_w": se_w, "t_w": b / se_w, "r2": r2, "e": e, "X": X}
+
+rng = np.random.default_rng(21)
+m = rng.normal(0, 0.011, 1200)
+y = 0.0001 + 0.75 * m + rng.normal(0, 1, 1200) * (0.006 * (0.4 + 3.5 * np.abs(m) / 0.011))
+f = ols_fit(m, y)
+
+import statsmodels.api as sm
+sm_c = sm.OLS(y, sm.add_constant(m)).fit()
+sm_w = sm.OLS(y, sm.add_constant(m)).fit(cov_type="HC1")
+print(f"params match: {np.abs(np.asarray(sm_c.params) - f['b']).max():.2e}   "
+      f"classical bse match: {np.abs(np.asarray(sm_c.bse) - f['se_c']).max():.2e}   "
+      f"HC1 bse match: {np.abs(np.asarray(sm_w.bse) - f['se_w']).max():.2e}")
+e = f["e"]
+buckets = np.array_split(e, 5)
+print("audit: var(e) by time quintile", [f"{b.var():.2e}" for b in buckets])
+print("audit: ACF(e) lags 1-5", [f"{pd.Series(e).autocorr(l):+.3f}" for l in range(1, 6)])
+print(f"audit: excess kurtosis {stats.kurtosis(e):+.2f}")
+```
+
+**Expected reasoning.** Matches at ≤1e-12; audit shows time-bucket variance
+roughly flat (this generator ties variance to |x|, not time — contrast with
+real data!) and kurtosis small; ACF ≈ 0. **The drill is the deliverable:
+coefficients + two SE flavors + audit in 20 minutes from blank.** If you
+blew the time box, the error log line is which piece (matrix code? sandwich?
+audit?) needed a peek.
+
+## R3 — arithmetic
+
+```python
+se = 0.012 / (0.008 * np.sqrt(1000))
+half = 1.96 * se
+n_needed = (1.96 * 0.012 / (0.008 * 0.01)) ** 2
+print(f"(a) SE = {se:.4f}   (b) half-width = {half:.4f}   (c) n needed = {n_needed:,.0f} ≈ {n_needed/252:.0f} years")
+print(f"(d) plim beta = {0.9 + 0.5 * 0.7:.2f}")
+```
+
+**Expected numbers.** SE = 0.0474, half-width ≈ 0.093 — *an order of
+magnitude* from the PM's spec; n needed ≈ 8,500 days ≈ 34 years. **This is
+the arithmetic that ends hedging-ratio fantasies: beta precision costs
+square-rooted decades.** Hence rolling-window trade-offs (day 17) and the
+industry's undignified BM/level shortcuts (module 07).
+
+## R4 — one regression, fully dressed
+
+```python
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    rr = np.log(get_prices(["AAPL", "SPY"], start="2015-01-01")).diff().dropna()
+else:
+    p = synthetic_prices(n_days=2500, n_assets=2, seed=23, corr=0.5)
+    rr = np.log(p).diff().dropna(); rr.columns = ["AAPL", "SPY"]
+
+g = ols_fit(rr["SPY"].values, rr["AAPL"].values)
+n = len(rr)
+se_w_a, se_w_b = g["se_w"]
+print(f"beta    {g['b'][1]:+.3f}  SE(c) {g['se_c'][1]:.4f}  SE(W) {se_w_b:.4f}  t(W) {g['b'][1]/se_w_b:+.1f}")
+print(f"alpha   {g['b'][0]*252*100:+.2f}%/yr  SE(W) {se_w_a*252*100:.2f}%/yr  t(W) {g['t_w'][0]:+.2f}")
+print(f"R2      {g['r2']:.3f}  corr^2 {rr['AAPL'].corr(rr['SPY'])**2:.3f}")
+ev = pd.Series(g["e"])
+print(f"audit   var buckets {[f'{b.var():.2e}' for b in np.array_split(ev, 5)]}")
+print(f"audit   ACF {[f'{ev.autocorr(l):+.3f}' for l in range(1, 6)]}  ex-kurt {stats.kurtosis(ev):+.1f}")
+```
+
+**Expected verdict (exemplar).** "β̂ ≈ 1.2 with White and classical SEs
+within ~10% — A4 failure is mild for this pair at daily frequency, so
+either SE is defensible and I report White as-default; α̂ ≈ +5–10%/yr with
+t(W) ≈ 1–1.5, i.e. consistent with zero and NOT a finding; time-bucket
+variances span ~2–4× (vol regimes visible but repaired by the sandwich);
+ACF ≈ 0 — overlapping-window repair unnecessary here; kurtosis high and
+accepted (n large)." **The two-sentence verdict is the point of the
+format: a regression without its diagnosis is an unexplained exceptional
+backtest in miniature.**
+
+## R5 — the review comment (exemplar)
+
+"Twelve classical-SE regressions with three t > 2 cannot support 'three
+robust effects' on two independent grounds. (i) Inference: daily/panel
+returns data rejects the classical SEs' assumptions by default — in
+calibrated simulations the 5% test fires at 21% (heteroskedastic-on-|x|)
+and 37% (persistent regressor, AR errors); until each regression's SE
+flavor is justified (White for the fan, Newey–West for overlap), the
+t-stats are upper bounds, not evidence. (ii) Selection: three-of-twelve at
+5% nominal is itself the multiple-comparisons null expectation
+(module 04.11), before any honest-SE shrinkage. Required repairs: report
+both SE flavors per row; a one-line assumption audit per regression; and a
+multiple-testing-adjusted threshold (Bonferroni 0.004, or the BH variant)
+across the twelve. Then, if anything still stands: the effect sizes with
+CIs, so 'robust' gets an economic meaning beyond a t-statistic."
+
+**Common mistakes across the week.** Reporting t without stating the SE
+flavor (an unlabeled t is a claim about the world plus a silent claim about
+the errors); believing coverage and significance are coefficient properties
+rather than (coefficient, SE, n) properties; skipping the audit because
+"this is just a quick regression" — quick regressions are where false
+conclusions breed.

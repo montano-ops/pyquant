@@ -1,0 +1,99 @@
+# Day 4 — Exercise: The Gauss–Markov Assumptions
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+from scipy import stats
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+```
+
+## E1 (L2) — The memorization that pays
+
+From a blank cell (no notes): write the assumptions A1–A6, each as
+one line of math + one line of plain English + "buys: …". Then grade
+yourself against lesson.md §2 — log what you missed. (This IS the
+exercise. Retrieval is the point.)
+
+```python
+# YOUR ANSWER (markdown in a comment is fine):
+```
+
+## E2 (L4) — The tournament: bias vs inference, four worlds
+
+Same regression y = 0.0001 + 0.9·m + ε in four worlds (n = 1200,
+β = 0.9, 600 runs each):
+
+(a) **GM world** — ε ~ N(0, 0.01²): baseline.
+(b) **Heteroskedastic world** — σ_t ∈ {0.005, 0.02} alternating by a
+    slow regime process (or: ε_t ~ N(0, 0.01²·(0.5+2·|sin(t/80)|))):
+    conditional variance varies, mean still 0.
+(c) **Autocorrelated world** — ε_t = 0.6·ε_{t−1} + u_t (AR(1)).
+(d) **Omitted-variable world** — y = 0.0001 + 0.9·m + 0.5·h + ε with
+    h correlated ρ=0.7 with m, and you regress y on m ONLY.
+
+For each world report: E[β̂] (bias?), sd of β̂ across runs, mean of
+the classical per-fit SE, and the rejection rate of |t| > 1.96
+testing β = 0.9 (the TRUE value — nominal 5%). Assemble the 4×4
+table. Which worlds break unbiasedness, which break only inference?
+
+```python
+# YOUR CODE
+```
+
+## E3 (L3) — By hand: why (d) biases
+
+The world (d) truth is β = 0.9. Derive what plim β̂ is when h is
+omitted and corr(m, h) = ρ. Verify the formula against your E2 (d)
+number. Write the formula (omitted-variable bias) from memory.
+
+```python
+# YOUR CODE
+```
+
+## E4 (L5) — The assumption audit, on your real data
+
+Real mode: SPY ~ QQQ daily (or synthetic equivalent). Audit A4–A6 on
+the residuals, mechanically: (i) A4: split residuals into vol
+quintiles by date-ordered buckets — print per-bucket var(e);
+(ii) A5: lag-1..10 ACF of e; (iii) A6: QQ plot e vs normal AND vs
+t(5) (scipy probplot) or at least excess kurtosis. Write the verdict
+line for each: holds / broken / borderline.
+
+```python
+# YOUR CODE
+```
+
+## E5 (L7) — The defense
+
+A reviewer says your factor study is junk because "returns are
+non-normal, so OLS is invalid here." Write the one-paragraph defense
+a referee would accept — which assumption normality actually is, what
+it buys, what your n buys you, and what you checked instead.
+
+```python
+# Your answer:
+```
+
+## Hints
+
+- E2: reuse day-3 `ols_fit` (rewrite it here — rebuild, don't import
+  between notebooks; the repetition is the training). Regimes in (b):
+  make variance depend on TIME, not on m — you want A4 broken but A2
+  intact. In (c) an AR(1) error keeps E[ε|m] = 0. In (d), h = ρ·m +
+  √(1−ρ²)·z with the same variance as m is the clean generator.
+- E3: plim β̂ = β + γ·cov(m,h)/var(m) where γ is the omitted
+  coefficient: 0.5·0.7 = 0.35 of extra slope if var(m)=var(h).
+- E4(i): order by date, not by |e| — the question is whether the
+  variance was constant ACROSS TIME. Vol quintiles constructed from
+  rolling |r| work too.

@@ -1,0 +1,89 @@
+# Day 21 — Checkpoint Lab: The Momentum Study
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+from scipy import stats
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+```
+
+## Exercise A — the pipeline (rubric 1–7)
+
+**A0 — Pre-declaration cell (rubric 1–3, write first).** Before any
+result: state in a markdown or comment cell — universe, window, the
+single characteristic (mom 12-2: cumulative log return months t−12..t−2),
+the response (month t+1), the SE engine (FM; ACF check; NW if |ρ|>0.15),
+the controls, and the one-sentence skip-month justification a referee
+could quote.
+
+**A1 — Build.** (month, name) frame with `mom` and `r_next`; print the
+information audit line. Synthetic mode: 50-name world WITH a planted
++40bp/σ momentum premium (premium added at month t proportional to
+cross-sectional z of raw mom at t — so the plant IS the positive
+control); real mode: research50, mom from its own prices.
+
+```python
+# --- A0/A1: YOUR CODE (pre-declaration, then the build) ---
+```
+
+**A2 — Controls (rubric 4).** Null column (a frozen random
+characteristic must stay quiet); positive control: in synthetic mode the
+plant IS the control — recover +40bp/σ within ~2 SEs. Report both
+verdicts before continuing.
+
+```python
+# YOUR CODE
+```
+
+**A3 — Both readings (rubric 5).** Quintile sorts (means + Q5−Q1 spread
+with t) and FM slopes (λ̂, SE, t, mean monthly R²). They should tell one
+story.
+
+```python
+# YOUR CODE
+```
+
+**A4 — Certified SEs + regime honesty (rubric 6–7).** λ̂_t series: ACF
+(does plain sd/√T stand?), any NW needed applied. Then the regime
+check ref 7 demands before ANY regime sentence: rolling 36-month mean
+of λ̂_mom_t with band ±2·(sd_λ/√36); is first-half vs second-half
+difference |Δ| > band? Print Δ and the band.
+
+```python
+# YOUR CODE
+```
+
+## Exercise B — the two-page report + self-score (rubric 8–10)
+
+In ONE markdown cell, write the report:
+
+```
+TITLE: The 12-2 momentum premium in a 50-name <your-universe> panel, <window>
+1. Question & pre-declared design (2 sentences).
+2. Data & construction (formation window, skip sentence, audit result).
+3. Controls: null (number), positive (number), verdicts.
+4. Results: sorts table (5 numbers + spread t); FM table (λ̂, SE, t,
+   R̄², ACF); regime arithmetic (Δ vs band) OR explicit "no regime
+   claim made".
+5. Caveat table: 6 rows with direction + severity.
+6. Verdict: scope line; calibration summary (evidence strength,
+   controls, regimes — not just t); the next experiment (module 07's).
+```
+
+Then the self-score: rubric lines held / 10, with the failing lines'
+repair plan.
+
+```python
+# YOUR REPORT CELL + SELF-SCORE
+```
