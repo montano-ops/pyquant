@@ -1,0 +1,194 @@
+# Day 12 — Solution: Specification: Logs, Dummies, Interactions
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+from scipy import stats
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+
+def ols_multi(X_cols, y, names=None):
+    X = np.column_stack([np.ones(len(y))] + [np.asarray(c, float) for c in X_cols])
+    y = np.asarray(y, float)
+    n, k = X.shape
+    XtX_inv = np.linalg.inv(X.T @ X)
+    b = XtX_inv @ X.T @ y
+    e = y - X @ b
+    s2 = e @ e / (n - k)
+    se = np.sqrt(np.diag(s2 * XtX_inv))
+    r2 = 1 - (e @ e) / ((y - y.mean()) @ (y - y.mean()))
+    names = ["const"] + (names or [f"x{j}" for j in range(1, k)])
+    return pd.DataFrame({"b": b, "se": se, "t": b/se}, index=names), {"resid": e, "r2": r2}
+```
+
+## E1 — the grammar drill
+
+```python
+rng = np.random.default_rng(14)
+n = 3000
+D = (rng.random(n) < 0.10).astype(float)
+x = rng.normal(0, 0.01, n)
+y = (1.0 + 0.4 * D) * x - 0.001 * D + rng.normal(0, 0.012, n)
+
+tab, _ = ols_multi([x, D, D * x], y, names=["x(calm)", "D(level)", "Dx(slope shift)"])
+print(tab.round(4).to_string())
+print(f"crisis beta = {tab['b']['x(calm)'] + tab['b']['Dx(slope shift)']:.3f}  (truth 1.40)")
+
+tab0, _ = ols_multi([x], y, names=["x"])
+print(f"\nno-interaction mongrel beta: {tab0['b']['x']:.3f}  vs 0.9*1.0+0.1*1.4 = 1.040")
+```
+
+**Expected reasoning.** With the true D, all three coefficients land near
+truth (calm ≈ 1.00, level ≈ −0.001, shift ≈ +0.40 with t comfortably
+large at 300 crisis points): **an interaction model is just OLS on
+products — the grammar was never the hard part; the reading discipline is
+(calm β lives in β̂, crisis β = β̂ + δ̂ requires the addition).** The
+mongrel fit recovers ≈ 1.04 — the exposure-weighted average, which is the
+correct answer to a question nobody asked: your hedge is not calm-90%-
+weighted on the day you need it. That the leakage went into the slope here
+(rather than the intercept) is worth one diagnostic thought — x·D and D
+are collinear objects; leave either out and its content reassigns.
+
+## E2 — the trap, sprung
+
+```python
+C = 1 - D
+try:
+    tab_trap, _ = ols_multi([x, D, C, D * x], y, names=["x", "D", "C", "Dx"])
+    print(tab_trap.round(3).to_string())
+except Exception as ex:
+    print(type(ex).__name__, ex)
+X = np.column_stack([np.ones(n), x, D, C, D * x])
+print(f"\ncolumns {X.shape[1]}  rank {np.linalg.matrix_rank(X)}")
+```
+
+**Expected.** rank = 4 < 5 columns: const + D + C is a perfect linear
+combination (C = const − D) — A3 violation in one line. numpy's "solution"
+is a numerical shrug (huge coefficients cancelling); statsmodels reports a
+singular design. The column that must leave: any ONE of {const, D, C} —
+convention keeps const, drops one regime, and names the kept dummies
+relative to the dropped "base". **The trap is not a library quirk: it is
+the algebra of exhaustive categories, and it reappears disguised as
+'each-decile dummies plus intercept' in cross-sectional work (day 19).**
+
+## E3 — real crash betas, declared threshold
+
+```python
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    rr = np.log(get_prices(["AAPL", "SPY"], start="2015-01-01")).diff().dropna()
+else:
+    # constant-beta world with a SHARED vol path: slope must not wobble with stress
+    rng = np.random.default_rng(23)
+    n = 2500
+    log_sig = np.empty(n); log_sig[0] = np.log(0.011)
+    eta = rng.standard_normal(n)
+    for t in range(1, n):
+        log_sig[t] = 0.97*log_sig[t-1] + 0.03*np.log(0.011) + 0.45*np.sqrt(1-0.97**2)*eta[t]
+    sig = np.exp(log_sig)
+    mkt = sig * rng.normal(0, 1, n)
+    y = 0.0002 + 0.9*mkt + 0.010*(sig/sig.mean())*rng.normal(0, 1, n)
+    idx = pd.bdate_range(end=pd.Timestamp.today().normalize(), periods=n)
+    rr = pd.DataFrame({"AAPL": y, "SPY": mkt}, index=idx)
+
+mkt_vol = rr["SPY"].abs().rolling(21).mean()
+thr = mkt_vol.quantile(0.80)                       # declared once, before fitting
+D_stress = (mkt_vol > thr).astype(float)
+print(f"stress share of days: {D_stress.mean():.1%}")
+
+t1, _ = ols_multi([rr["SPY"].values, (D_stress * rr["SPY"]).values], rr["AAPL"].values,
+                  names=["x(calm)", "Dx(stress shift)"])
+print(t1.round(4).to_string())
+print(f"beta_calm {t1['b']['x(calm)']:.3f}   beta_stress {t1['b']['x(calm)'] + t1['b']['Dx(stress shift)']:.3f}")
+
+t2, _ = ols_multi([rr["SPY"].values, D_stress.values, (D_stress * rr["SPY"]).values],
+                  rr["AAPL"].values, names=["x(calm)", "D(level)", "Dx(shift)"])
+print(t2.round(4).to_string())
+```
+
+**Expected pattern (real AAPL).** Stress share ≈ 20% by construction.
+Real data's classic finding: β_stress > β_calm for high-β names, t(δ)
+positive and significant in names with strong vol-sensitivity (AAPL's δ
+usually lands +0.2..+0.4, t 2–4); the level term γ comes in negative
+(crisis days are down days on average) and its inclusion *moves* δ̂ —
+exactly the leakage from E1, now on real data: **always fit the level
+dummy alongside the interaction, or the slope shift will steal the level
+shift's lunch.** Synthetic world (shared vol path, constant planted
+β = 0.9): β̂_calm ≈ 0.93, δ̂ ≈ −0.006 with t ≈ −0.2 — the honest finding
+IS the null, at full power, on data whose volatility clusters hard (the
+vol process refuses to masquerade as a slope process when the slope is
+truly constant; planted vol
+clustering raises everyone's vol together; it did NOT plant slope
+asymmetry — a subtlety worth one log line).
+
+## E4 — the size transform
+
+```python
+rng = np.random.default_rng(30)
+n = 200
+mcap = 10 ** rng.uniform(8, 12, n)
+r = 0.005 - 0.002 * np.log2(mcap / 1e9) + rng.normal(0, 0.02, n)
+X_specs = {"raw dollars": mcap, "log(mcap)": np.log(mcap), "log2 ratio": np.log2(mcap / 1e9)}
+for tag, xv in X_specs.items():
+    tab, g = ols_multi([xv], r, names=["x"])
+    dec = pd.qcut(pd.Series(np.log(mcap)), 10, labels=False)
+    resid_by_dec = pd.Series(g["resid"]).groupby(dec).mean().abs().mean()
+    print(f"{tag:12s}: b {tab['b']['x']:+.2e}  t {tab['t']['x']:+6.2f}  R2 {g['r2']:.3f}   mean|resid by decile| {resid_by_dec:.4f}")
+```
+
+**Expected pattern (measured).** The truth spec recovers b ≈ −0.0021
+against the planted −0.002 with t ≈ −5.3; the log(mcap) spec is
+identical in fit (affine re-unit: R² 0.124). The raw-dollar spec keeps
+the sign and much of the significance (t ≈ −4.6) but pays for its wrong
+geometry: R² 0.095 vs 0.124 and ≈1.4× the decile-residual mass
+(0.0043 vs 0.0031), concentrated in the top deciles where log-curvature
+bites hardest. Note the honest magnitude: n = 200 forgives a lot — the
+U-shape is a *drag*, not yet a scandal; shrink n or widen cap-dispersion
+and the curvature becomes legible. The durable lesson is the diagnostic
+chain rather than this draw's drama: wrong unit → curvature in
+decile-residuals → the same high-h points day 10 would flag. **The spec
+question and the outlier question are the same question from two sides:
+unit the x-axis so the top h-score names stop dictating the line.**
+
+## E5 — threshold mining, executed and convicted
+
+```python
+ts = []
+for q in np.arange(0.50, 0.96, 0.05):
+    Dq = (mkt_vol > mkt_vol.quantile(q)).astype(float)
+    tq, _ = ols_multi([rr["SPY"].values, Dq.values, (Dq * rr["SPY"]).values],
+                      rr["AAPL"].values, names=["x", "D", "Dx"])
+    ts.append((q, tq["t"]["Dx"]))
+ts = pd.DataFrame(ts, columns=["threshold_pct", "t_delta"]).set_index("threshold_pct")
+print(ts.round(2).to_string())
+ts.index = ts.index.round(2)   # guard float dust from np.arange (0.8 vs 0.7999...)
+print(f"\nbest t {ts['t_delta'].max():.2f} at {ts['t_delta'].idxmax():.0%} | declared-80th t {ts.loc[0.80, 't_delta']:.2f}")
+```
+
+**Expected pattern (measured, synthetic null world).** The tour's ten
+correlated looks span t ∈ [−0.2, +1.9] — *all* individually quiet under
+a true null, yet the max (t = 1.87 at the 90th percentile) is one
+adjective away from a deck bullet: "the effect appears at the 90th
+percentile." That theater is exactly why the threshold must be declared
+before the fan is seen. The adjacent-dummy sharing (neighboring D's
+differ by a few days) makes the looks ~90% the same column, so the fan
+moves smoothly and cannot be treated as ten independent draws
+(module 04.13's correlation-attenuated Bonferroni). (Real-data branch:
+when the mechanism is REAL the fan clusters big-t across neighboring
+thresholds — mechanism robust to the percentile, which is itself
+evidence; quote the declared 80th, disclose the fan once.) The honest
+report: threshold declared ex ante, alternatives disclosed once, and
+max-t explicitly barred from
+headlines. **You now own both the crime and the conviction — every
+specification sensitivity you ever run inherits this two-column honesty
+(rule-chosen t, search-max t).**

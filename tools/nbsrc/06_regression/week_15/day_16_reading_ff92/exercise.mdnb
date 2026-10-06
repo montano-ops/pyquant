@@ -1,0 +1,126 @@
+# Day 16 — Exercise: Reading Fama & French (1992)
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+from scipy import stats
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+
+def ols_multi(X_cols, y):
+    X = np.column_stack([np.ones(len(y))] + [np.asarray(c, float) for c in X_cols])
+    y = np.asarray(y, float)
+    n, k = X.shape
+    XtX_inv = np.linalg.inv(X.T @ X)
+    b = XtX_inv @ X.T @ y
+    e = y - X @ b
+    s2 = e @ e / (n - k)
+    se = np.sqrt(np.diag(s2 * XtX_inv))
+    r2 = 1 - (e @ e) / ((y - y.mean()) @ (y - y.mean()))
+    return {"b": b, "se": se, "r2": r2}
+
+def fama_macbeth(frame, ycol, xcols):
+    rows, r2s = {}, {}
+    for m, g in frame.groupby(level=0):
+        g = g[[ycol] + xcols].dropna()
+        if len(g) < 10:
+            continue
+        Zs = [(g[c] - g[c].mean()) / g[c].std() for c in xcols]
+        f = ols_multi(Zs, g[ycol].values)
+        rows[m] = f["b"]; r2s[m] = f["r2"]
+    lam = pd.DataFrame(rows, index=["const"] + xcols).T
+    T = len(lam)
+    out = pd.DataFrame({"mean": lam.mean(), "SE": lam.std(ddof=1)/np.sqrt(T),
+                        "t": lam.mean()/(lam.std(ddof=1)/np.sqrt(T))})
+    return lam, out, pd.Series(r2s).mean()
+```
+
+## E1 (L2) — The claims map, before any code
+
+FF92's five claims: (i) β flat 1963–90; (ii) size premium (−); (iii) BM
+premium (+); (iv) size & BM absorb leverage and E/P; (v) size & BM
+absorb β. For each, write the ONE univariate-or-joint column pattern that
+evidences it, and which alternative world produces the same pattern
+(i.e. what the evidence alone can't rule out).
+
+```python
+# YOUR MAP:
+```
+
+## E2 (L4) — Two constructed worlds, one table grammar
+
+Build BOTH worlds from lesson §4 (N = 100 names, T = 240 months, planted
+parameters as in the hints). For each world print: FM univariate tables
+for [beta], [size], [bm] separately, then the JOINT table [beta, size,
+bm]. Then the sentence: which world's univariate-vs-joint drama matches
+FF92's, and what parallel does the OTHER world warn you about?
+
+```python
+# YOUR CODE
+```
+
+## E3 (L4) — The EIV attenuation and the portfolio repair
+
+In world B: (a) replace FM's β input with β̂_est = β_true + N(0, 0.25²)
+per name (stand-in for window-estimated betas; day 17 owns window
+mechanics) — report the joint slope's attenuation vs E2. (b) The FF92
+repair: bin names into deciles by β̂_est, assign each name its decile's
+MEAN β̂_est, rerun joint FM — report the slope's recovery. (c) The
+attenuation formula σ_β²/(σ_β²+σ_eiv²) checked numerically for both
+(a) and (b).
+
+```python
+# YOUR CODE
+```
+
+## E4 (L6) — The June discipline
+
+FF92 matches accounting data for fiscal year t to returns from July of
+year t+1. (a) Write the look-ahead horror story that the lag prevents,
+in two sentences. (b) In your synthetic world, implement the violation:
+let BM be measured at t but constructed with THIS year's realized
+return mixed in (z_bm_leak = z_bm + 0.3·z_next_ret) and rerun —
+what happens to the BM slope and why is this the canonical
+point-in-time failure?
+
+```python
+# YOUR CODE
+```
+
+## E5 (L7) — The obituary review
+
+"Fama & French showed in 1992 that beta does not explain the
+cross-section of returns; CAPM is empirically dead." Write the
+two-paragraph referee response: one charitable (what the table really
+established, with numbers' meaning), one critical (the two knives from
+lesson §5 and the world-B symmetry).
+
+```python
+# Your answer:
+```
+
+## Hints
+
+- E2 worlds: monthly market sd 4.5%, β_i ~ N(1, 0.4²), idio 5%;
+  world A: λ_size = −15bp/σ, λ_bm = +20bp/σ, λ_β = 0; world B:
+  λ_β = +60bp/unit-β, z_size built to corr ≈ −0.8 with (β−1),
+  λ_size = λ_bm ≡ 0. Wait: in world B keep β NOT z-scored in the joint
+  table? No — fama_macbeth z-scores everything; λ_β = 60bp/unit ≈
+  24bp/σ. Fine: it will dominate.
+- E3(c): attenuation with binned betas approaches σ_β²/(σ_β² +
+  σ_eiv²/10) — the grouping divisor.
+- E4(b): the leaked BM slope grows toward the sum of the premium and
+  the leak coefficient × next-ret's own variance share — WHAT matters
+  is seeing a generated fiction become a 'significant characteristic'.
+- E5: cite the t's meaning (mean-slope/SE over T months), the sample
+  period, and what an SE of the β slope permits (± premia).

@@ -1,0 +1,164 @@
+# Day 9 — Solution: Multicollinearity
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+from scipy import stats
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+
+def ols_multi(X_cols, y):
+    X = np.column_stack([np.ones(len(y))] + [np.asarray(c, float) for c in X_cols])
+    y = np.asarray(y, float)
+    n, k = X.shape
+    XtX_inv = np.linalg.inv(X.T @ X)
+    b = XtX_inv @ X.T @ y
+    e = y - X @ b
+    s2 = e @ e / (n - k)
+    vcov = s2 * XtX_inv
+    se = np.sqrt(np.diag(vcov))
+    r2 = 1 - (e @ e) / ((y - y.mean()) @ (y - y.mean()))
+    return {"b": b, "se": se, "t": b / se, "r2": r2, "resid": e, "X": X, "vcov": vcov}
+
+def vif(X_cols):
+    out = []
+    for j in range(len(X_cols)):
+        others = [c for i, c in enumerate(X_cols) if i != j]
+        r2j = ols_multi(others, X_cols[j])["r2"] if others else 0.0
+        out.append(1.0 / (1.0 - r2j))
+    return np.array(out)
+```
+
+## E1 — the inflation, by hand and by fit
+
+```python
+rng = np.random.default_rng(9)
+n = 1200
+x1 = rng.normal(0, 1, n)
+print(f"{'rho':>5} {'SE_formula':>10} {'SE_fit':>8} {'b1':>7} {'b2':>7}   (truths: 1.0, 1.0)")
+for rho in [0, 0.7, 0.9, 0.98]:
+    x2 = rho * x1 + np.sqrt(1 - rho**2) * rng.normal(0, 1, n)
+    e = rng.normal(0, 1, n)
+    y = 1.0 * x1 + 1.0 * x2 + e
+    f = ols_multi([x1, x2], y)
+    se_form = 1.0 / (1.0 * np.sqrt(n) * np.sqrt(1 - rho**2))
+    print(f"{rho:5.2f} {se_form:10.4f} {f['se'][1]:8.4f} {f['b'][1]:7.3f} {f['b'][2]:7.3f}")
+```
+
+**Expected pattern.** SE_fit tracks SE_formula at every ρ (formula: 0.029
+→ 0.040 → 0.066 → 0.145); at ρ = 0.98 a one-draw |β̂₁ − 1| of 0.3–0.5 is
+ordinary, and β̂₁ + β̂₂ ≈ 2 remains far more accurate than either part —
+**the sum survives what the parts cannot.** A tournament would show:
+unbiased at all ρ (A2 holds!), sd(β̂) marching with the formula, signs
+flipping at will once SE ≳ 0.1. The memorized sentence: *collinearity
+moves information from the parts to the whole; it never destroys the
+whole.*
+
+## E2 — joint vs individual, one screen
+
+```python
+rho = 0.98
+x2 = rho * x1 + np.sqrt(1 - rho**2) * rng.normal(0, 1, n)
+e = rng.normal(0, 1, n)
+y = 1.0 * x1 + 1.0 * x2 + e
+f = ols_multi([x1, x2], y)
+n_, k_ = f["X"].shape
+sst = ((y - y.mean()) @ (y - y.mean()))
+sse = f["resid"] @ f["resid"]
+F = ((sst - sse) / 2) / (sse / (n_ - k_))
+print(f"t(b1) {f['t'][1]:+.2f}   t(b2) {f['t'][2]:+.2f}   joint F {F:.0f} (p {1-stats.f.cdf(F, 2, n_-k_):.1e})")
+
+v = f["vcov"]
+se_sum = np.sqrt(v[1,1] + v[2,2] + 2*v[1,2])
+print(f"Wald t(b1+b2): {(f['b'][1]+f['b'][2])/se_sum:+.2f}   vs constrained-fit t: "
+      f"{ols_multi([x1+x2], y)['t'][1]:+.2f}")
+```
+
+**Expected pattern.** Individual t's ≈ 0.5–1.5 (nothing to report — and
+that IS the report), joint F in the hundreds: **the pair is certain, the
+split is unknowable, both facts printed one line apart.** The Wald t on
+the sum is large and significant — the constrained refit's t agrees in
+spirit but differs in number because it re-optimizes under the
+β₁ = β₂ restriction; the Wald version prices the sum from the ORIGINAL
+fit's covariance ellipse (note v₁₂ < 0 and large: the estimates are
+negatively correlated — over-attribute to one and you under-attribute to
+the other, conserving the total). That negative covariance is the ellipse
+from the lesson, made numeric.
+
+## E3 — AAPL on SPY and QQQ, then orthogonalized
+
+```python
+from qrc.data import get_prices
+if DATA_SOURCE == "real":
+    rr = np.log(get_prices(["AAPL", "SPY", "QQQ"], start="2015-01-01")).diff().dropna()
+else:
+    rng = np.random.default_rng(5)
+    n = 2500
+    spy = rng.normal(0.0004, 0.010, n)
+    qqq = 0.90 * spy + np.sqrt(1 - 0.90**2) * rng.normal(0.0004, 0.011, n)
+    aapl = 0.0006 + 0.70 * spy + 0.55 * qqq + rng.normal(0, 0.012, n)
+    rr = pd.DataFrame({"SPY": spy, "QQQ": qqq, "AAPL": aapl})
+
+f = ols_multi([rr["SPY"].values, rr["QQQ"].values], rr["AAPL"].values)
+vv = vif([rr["SPY"].values, rr["QQQ"].values])
+print(f"raw:   beta_SPY {f['b'][1]:+.3f} (SE {f['se'][1]:.3f}, t {f['t'][1]:+.1f}) | "
+      f"beta_QQQ {f['b'][2]:+.3f} (SE {f['se'][2]:.3f}, t {f['t'][2]:+.1f}) | VIFs {vv.round(1)}")
+
+qo = ols_multi([rr["SPY"].values], rr["QQQ"].values)["resid"]     # Nasdaq tilt net of market
+fo = ols_multi([rr["SPY"].values, qo], rr["AAPL"].values)
+print(f"orth:  beta_SPY {fo['b'][1]:+.3f} (SE {fo['se'][1]:.3f}, t {fo['t'][1]:+.1f}) | "
+      f"beta_QQQ' {fo['b'][2]:+.3f} (SE {fo['se'][2]:.3f}, t {fo['t'][2]:+.1f})")
+```
+
+**Expected pattern.** Raw fit: VIF ≈ 8–15 (corr ~0.92+), individual t's
+deflated, one coefficient implausible-looking (real AAPL: SPY and QQQ
+loadings joust; the sum ≈ 1.2 is the stable object). Orthogonalized:
+SE(β̂_SPY) shrinks toward its univariate value, both t's become legible,
+and the interpretations *change meaning*: β̂_SPY = broad-market exposure,
+β̂_QQQ' = tech-over-market tilt. **Real AAPL shows the tech tilt positive
+and strongly significant — the attribution was always there; the
+correlated design couldn't see it.** The price of the clarity: YOU chose
+to give the shared variation to SPY (reverse the order and β̂_SPY
+inherits it back). Orthogonalization encodes theory; it doesn't arbitrate
+it.
+
+## E4 — the three-way blind spot
+
+```python
+rng = np.random.default_rng(12)
+x1 = rng.normal(0, 1, n)
+x2 = rng.normal(0, 1, n)
+x3 = 0.5 * x1 + 0.5 * x2 + rng.normal(0, 0.05, n)
+cm = np.corrcoef([x1, x2, x3])
+print("pairwise corr:\n", np.round(cm, 2))
+print("VIFs:", vif([x1, x2, x3]).round(1))
+```
+
+**Expected pattern.** Pairwise corrs ≈ 0 (x1–x2), ~0.7 (x1–x3), ~0.7
+(x2–x3) — nothing looks alarming — while VIF(x3) ≈ 100+: **x3 is quoted
+almost exactly by the pair; no pair is quoted by a single other.** The
+diagnostic habit to install: VIF-by-construction for any new factor
+regression, pairwise-corr never trusted alone — FF's and every later
+factor model's collinearities are of exactly this three-way-and-up kind.
+
+## E5 — the attribution dispute (exemplar)
+
+Rebutting A: "the t's compare noise against noise — with corr 0.8 both
+SEs are inflated ~×1.7 and the joint F (report it) is what the data
+actually supports; keeping value 'because its t won' is attribution by
+coin toss, and next quarter's draw will flip the winner." Rebutting B:
+"PC1 is a variance construct, not an economic one — it maximizes
+explained variance of the FACTORS, regardless of which one prices the
+STRATEGY; you answered 'what moves together' when asked 'what am I paid
+for'". The defensible answers: orthogonalize by theory (value-net-of-
+quality, justified by the strategy's mandate) and report order
+sensitivity, or report the joint test plus both univariate benchmarks and
+admit the split is data-limited.

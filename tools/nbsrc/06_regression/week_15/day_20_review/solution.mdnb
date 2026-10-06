@@ -1,0 +1,184 @@
+# Day 20 — Review: Solutions
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+from scipy import stats
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+```
+
+## E1 — the FM machine, written cold
+
+```python
+def ols_multi(X_cols, y):
+    X = np.column_stack([np.ones(len(y))] + [np.asarray(c, float) for c in X_cols])
+    y = np.asarray(y, float); n, k = X.shape
+    XtX_inv = np.linalg.inv(X.T @ X)
+    b = XtX_inv @ X.T @ y; e = y - X @ b
+    s2 = e @ e / (n - k)
+    r2 = 1 - (e@e)/((y-y.mean())@(y-y.mean()))
+    return {"b": b, "se": np.sqrt(np.diag(s2*XtX_inv)), "r2": r2}
+
+rng = np.random.default_rng(7)
+N, T = 40, 96
+z = rng.normal(0, 1, N)                                  # persistent char
+m_t = rng.normal(0, 1, T)
+betas = rng.uniform(0.6, 1.4, N)
+R = 0.045*np.outer(m_t, betas) + rng.normal(0, 0.05, (T, N)) + 0.0015*z   # λ = +15bp per cs-sigma
+
+lams, r2s = [], []
+for t in range(T):
+    gz = (z - z.mean()) / z.std()
+    f = ols_multi([gz], R[t])
+    lams.append(f["b"][1]); r2s.append(f["r2"])
+lams = np.array(lams)
+lam_mean = lams.mean(); lam_se = lams.std(ddof=1)/np.sqrt(T)
+print(f"lambda_hat {lam_mean*1e4:+.1f} bp/sig, t {lam_mean/lam_se:+.2f}, mean R2 {np.mean(r2s):.3f}, ACF1 {pd.Series(lams).autocorr(1):+.2f}")
+# seed recycling: expect lambda_hat to wander within ±1 SE when you change 7 -> other seeds
+```
+
+**Expected.** λ̂ ≈ +17bp, SE ≈ 8bp, t ≈ +2.0; recycling the seed twice
+gives +3bp and +2bp (SE ≈ 8 both) — the instruction to recycle is the
+inoculation: ONE draw at t ≈ 2 is fog wearing a fancy dress, the
+DISTRIBUTION (recovery centered on +15bp with the quoted SE, across
+seeds) is the machine working. ACF1 ≈ 0 → std/√T valid. mean R² ≈ 0.03
+— right at the (k−1)/(N−1) ≈ 1/39 spurious floor, as promised when the
+truth is one small premium in 40-name fog. Self-test moment: this
+exercise is gradeable only in your ability to write it without
+scrolling. If you scrolled, day 15 is not yours yet — redo E1 tomorrow.
+
+## E2 — the diagnoses
+
+```python
+# (a) FLAT t=0.9 beta deciles in 50 megacaps: legitimately uninformative — megacap
+#     beta dispersion is compressed (~0.8–1.4), so E(beta premium) ~ 0 carries
+#     near-zero power either way; demand the positive-control experiment, not a
+#     reruns-the-paper verdict. FF92's flat beta IS this finding at real scale.
+# (b) 12-1 momentum NEGATIVE and significant: construction artifact, not a
+#     discovery — the skip-month you omitted is short-term reversal; re-run 12-2
+#     before claiming anything (JT93 knew this in 1993).
+# (c) 4-year stale characteristic, t=6.8: the premium is priced into stale paper
+#     — cross-section barely moves month to month, so the FM slope series is
+#     heavily autocorrelated and the SE understates; demand the lambda_t ACF and
+#     NW-d slope SE (and ask what the FRESH version of the characteristic says).
+# (d) 21-day forward sums with White t=3.1: White is blind to memory by
+#     construction — the overlap demands NW with L >= 21 (or, cleaner, the
+#     non-overlapped re-estimate); expect the honest t to fall to ~1.3-1.9.
+```
+
+## E3 — rolling vs expanding, measured
+
+```python
+rng = np.random.default_rng(5)
+n = 4000
+beta_true = np.interp(np.arange(n), [0, 600, 2600, n], [0.6, 0.6, 1.4, 1.4])  # 2000d transition between plateaus
+x = rng.normal(0, 0.011, n)
+y = 0.0003 + beta_true * x + rng.normal(0, 0.010, n)
+xs, ys = pd.Series(x), pd.Series(y)
+roll_b = (xs.rolling(252).cov(ys) / xs.rolling(252).var())
+expan_b = (xs.expanding().cov(ys) / xs.expanding().var())
+sig_e, sig_x, W = 0.010, 0.011, 252
+half_band_roll = 2 * sig_e / (sig_x * np.sqrt(W))
+# crossings of 25% and 75% of the transition (truth midpoints 0.8 and 1.2)
+def crossing(est, level, after=600):
+    idx = np.where(est.values[after:] > level)[0]
+    return (after + idx[0]) / 21 if len(idx) else np.nan
+print(f"truth 25% at t=1100d, 75% at t=2100d (roughly)")
+print(f"rolling252: 25% crossing ~t+{crossing(roll_b, 0.8):.0f}d, 75% ~t+{crossing(roll_b, 1.2):.0f}d, band ±{half_band_roll:.2f}")
+print(f"expanding : 25% crossing ~t+{crossing(expan_b, 0.8):.0f}d, 75% ~t+{crossing(expan_b, 1.2):.0f}d, band late ±{2*sig_e/(sig_x*np.sqrt(n)):.2f}")
+```
+
+**Expected (measured across 8 seeds; single-run fog flagged).** Rolling
+252: 25%-crossing lag centers near W/2 (the window's own average is half
+stale by construction) BUT the spread across seeds is ±150 — the
+noise-vs-drift ratio at these scales makes ANY single crossing time
+unquotable (that fog is the window's entry fee); 75%-crossing lags are
+shorter (the series is already moving, noise finishes the job).
+Expanding: 25%-crossing lag ≈ 730–995 trading days in every seed —
+~4 years — and the 75% level is NEVER reached in-sample (the series
+ends at ≈ 1.08 vs truth 1.4); mechanism: expanding β̂ is a mean over
+history, so a permanent 0.8-level-shift must be amortized over the whole
+sample — **expanding is structurally blind to level breaks**. Plateau
+behavior is the mirror image that makes the punchline: rolling sits
+inside its ±0.11 band 85–100% of post-ramp days in most seeds (unlucky
+runs undershoot — adjacent windows share 251 of 252 days, so excursions
+last hundreds of days and a marginal 95% band does not promise a 95%
+PATH share), while expanding lies outside its own tight ±0.03 late band
+~100% of post-shift days. **Expanding's shrinking band looks like
+growing certainty; after a break it is growing hubris.** That asymmetry
+is the operational rule from day 17: rolling answers "what is β now,"
+expanding + break arithmetic answers "has the world changed," and
+NEITHER's band certifies drift detection by itself.
+
+## E4 — one world, four SEs
+
+```python
+def se_white(X, e):
+    XtX_inv = np.linalg.inv(X.T @ X)
+    meat = X.T @ (e[:, None]**2 * X)
+    n, k = X.shape
+    return np.sqrt(np.diag(XtX_inv @ meat @ XtX_inv)) * np.sqrt(n/(n-k))
+
+def se_nw(X, e, L):
+    xe = X * e[:, None]; meat = xe.T @ xe
+    for l in range(1, L+1):
+        w = 1 - l/(L+1)
+        G = xe[l:].T @ xe[:-l]; meat += w*(G + G.T)
+    XtX_inv = np.linalg.inv(X.T @ X)
+    return np.sqrt(np.diag(XtX_inv @ meat @ XtX_inv))
+
+n_runs, N, Tm = 300, 60, 150
+rej = dict.fromkeys(["classical", "white", "nw6", "fm"], 0)
+for i in range(n_runs):
+    rng = np.random.default_rng(70000 + i)
+    m_t = rng.normal(0, 1, Tm); betas = rng.uniform(0.5, 1.5, N)
+    R = np.outer(m_t, betas) + rng.normal(0, 1.0, (Tm, N))
+    z = rng.normal(0, 1, N)
+    f = ols_multi([np.tile(z, Tm)], R.ravel())
+    X = np.column_stack([np.ones(Tm*N), np.tile(z, Tm)])
+    e = R.ravel() - X @ f["b"]
+    rej["classical"] += abs(f["b"][1]/f["se"][1]) > 1.96
+    rej["white"]     += abs(f["b"][1]/se_white(X, e)[1]) > 1.96
+    rej["nw6"]       += abs(f["b"][1]/se_nw(X, e, 6)[1]) > 1.96
+    lams = np.array([ols_multi([z], R[t])["b"][1] for t in range(Tm)])
+    rej["fm"]        += abs(lams.mean()/(lams.std(ddof=1)/np.sqrt(Tm))) > 1.96
+print({k: round(v/n_runs, 3) for k, v in rej.items()})
+```
+
+**Expected.** classical ≈ white ≈ nw6 ≈ 0.35–0.40, FM ≈ 0.04–0.06. The
+three non-FM columns agree because they share one assumption and differ
+only on axes that don't bind here: White repairs cross-sectional
+*heteroskedasticity per observation* (the common factor is not that —
+it's shared, not scaled), NW repairs ordering-*time* memory within each
+stacked block (this world's dependence lives on the cross-axis: the
+shared month, invisible to a time-down-the-stack sandwich), classical
+assumes away both. FM is the only one that acknowledges the actual
+geometry: within-month dependence is the whole ballgame, and averaging
+independent monthly cross-sections prices it exactly.
+
+## E5 — the memo
+
+```python
+# "12-1 momentum quintiles, R1000 recovered universe, 2018-, weekly rebal, t=3.7"
+# 1. Universe: recovered point-in-time membership acknowledged — good; membership
+#    SURVIVAL within window still tilts toward names that kept data continuity.
+# 2. Construction: 12-1 vs 12-2 — weekly rebalancing re-opens the 1-month reversal
+#    channel the skip month exists to close; t=3.7 may be SHORTING reversal.
+# 3. Frequency: weekly-rebalanced monthly-frequency characteristic = turnover
+#    theater (module 05.18: the signal's information content is monthly; costs accrue weekly).
+# 4. Testability: t=3.7 against WHAT SE engine? Panel data, overlapping weekly
+#    formation periods — demand NW or FM, or both.
+# 5. Controls: no null characteristic shown, no positive control, no transaction
+#    cost model against the weekly churn.
+# 6. Demand: re-run 12-2 at monthly rebalance with NW(3) on the LS series and a
+#    cost line at 10bp/side; attach the decay curve. Report back.
+```

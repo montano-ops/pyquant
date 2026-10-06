@@ -1,0 +1,235 @@
+# Day 19 — Solution: Partial FF92 on Your Panel
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+from scipy import stats
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+
+def ols_multi(X_cols, y):
+    X = np.column_stack([np.ones(len(y))] + [np.asarray(c, float) for c in X_cols])
+    y = np.asarray(y, float)
+    n, k = X.shape
+    XtX_inv = np.linalg.inv(X.T @ X)
+    b = XtX_inv @ X.T @ y
+    e = y - X @ b
+    s2 = e @ e / (n - k)
+    se = np.sqrt(np.diag(s2 * XtX_inv))
+    r2 = 1 - (e @ e) / ((y - y.mean()) @ (y - y.mean()))
+    return {"b": b, "se": se, "r2": r2}
+
+def fama_macbeth(frame, ycol, xcols):
+    rows, r2s = {}, {}
+    for m, g in frame.groupby(level=0):
+        g = g[[ycol] + xcols].dropna()
+        if len(g) < 10:
+            continue
+        Zs = [(g[c] - g[c].mean()) / g[c].std() for c in xcols]
+        f = ols_multi(Zs, g[ycol].values)
+        rows[m] = f["b"]; r2s[m] = f["r2"]
+    lam = pd.DataFrame(rows, index=["const"] + xcols).T
+    T = len(lam)
+    out = pd.DataFrame({"mean": lam.mean(), "SE": lam.std(ddof=1)/np.sqrt(T),
+                        "t": lam.mean()/(lam.std(ddof=1)/np.sqrt(T))})
+    return lam, out, pd.Series(r2s).mean()
+```
+
+## E1 — characteristics + shift audit
+
+```python
+from qrc.data import get_prices
+from qrc.synth import synthetic_returns, synthetic_prices
+from qrc.universe import load_universe
+
+if DATA_SOURCE == "real":
+    names = load_universe("research50")[:50]
+    px = get_prices(names + ["SPY"], start="2010-01-01")
+    vol_sh = get_prices(names, start="2010-01-01", field="volume")
+    rets_d = np.log(px[names]).diff()
+    mkt_d = np.log(px["SPY"]).diff()
+    dv_d = px[names].ffill() * vol_sh
+else:
+    names = [f"S{i}" for i in range(50)]
+    rets_d = synthetic_returns(n_days=3600, n_assets=50, seed=8, corr=0.4,
+                               drift_spread=0.0002)
+    rets_d.columns = names
+    mkt_d = rets_d.mean(axis=1)                     # cross-sectional mean = the market
+    rng = np.random.default_rng(8)
+    adv = np.exp(rng.normal(np.log(1e8), 0.8, len(names)))
+    dv_d = pd.DataFrame(synthetic_prices(n_days=3600, n_assets=50, seed=8, corr=0.4).values
+                        * (adv * np.exp(rng.normal(0, 0.4, rets_d.shape))),
+                        index=rets_d.index, columns=names)
+
+# --- characteristics, all known by END of month t ---
+roll_cov = rets_d.rolling(252).cov(mkt_d)
+roll_var = mkt_d.rolling(252).var()
+beta_d = roll_cov.div(roll_var, axis=0)
+
+per = rets_d.index.to_period("M")
+r_m = rets_d.groupby(per).sum()
+beta_m = beta_d.groupby(per).last()
+dv_m = dv_d.groupby(per).median()
+mom_m = r_m.rolling(11).sum().shift(1)              # months t-12..t-2 "...sum through t-1"
+for dfm in (r_m, beta_m, dv_m, mom_m):
+    dfm.index = dfm.index.to_timestamp()
+
+frame = pd.DataFrame({"beta": beta_m.stack(), "ldv": np.log(dv_m).stack(),
+                      "mom": mom_m.stack()})
+frame["r_next"] = r_m.stack().groupby(level=1).shift(-1)
+if DATA_SOURCE == "synthetic":                      # the positive-control characteristic
+    rngq = np.random.default_rng(3)
+    zq = pd.Series(rngq.normal(0, 1, len(names)), index=names)
+    frame["qual"] = np.tile(zq.values, len(r_m))
+    r_m_planted = r_m + 0.0025 * zq                 # +25bp/month per cs-sigma of quality
+    frame["r_next"] = r_m_planted.stack().groupby(level=1).shift(-1)
+frame = frame.dropna(subset=["r_next"]); frame.index.names = ["month", "name"]
+
+# shift audit: characteristics at month t vs response month t+1
+t0 = frame.index.get_level_values(0)[100]
+last_char_day = rets_d.loc[rets_d.index.to_period("M") <= t0.to_period("M")].index[-1]
+first_resp_month = (t0 + pd.offsets.MonthBegin(1)).to_period("M")
+first_resp_day = rets_d.loc[rets_d.index.to_period("M") == first_resp_month].index[0]
+print(f"frame rows: {len(frame)}  months: {frame.index.get_level_values(0).nunique()}")
+print(f"audit: chars through {last_char_day.date()}, response starts {first_resp_day.date()}: OK = {last_char_day < first_resp_day}")
+```
+
+**Expected reasoning.** The audit line prints True — the whole study's
+provenance in one comparison. Construction notes to log: month-end beta
+uses 252 trailing DAILY observations (not monthly recessions of the beta
+concept); momentum skips exactly one month (the 12-2 discipline — the
+skip month kills the short-term reversal that contaminates 12-1;
+JT93 did it first); the synthetic "market" is the equal-weighted cross-
+sectional mean (a one-factor world makes this the MLE of the factor).
+Names with < 252 trailing days drop out of the earliest months — data,
+not bugs.
+
+## E2 — quintile sorts
+
+```python
+def quintile_report(frame, char, ycol="r_next"):
+    rows = {}
+    for m, g in frame.groupby(level=0):
+        g = g[[char, ycol]].dropna()
+        if len(g) < 25:
+            continue
+        q = pd.qcut(g[char].rank(method="first"), 5, labels=False)
+        rows[m] = g.groupby(q)[ycol].mean()
+    Q = pd.DataFrame(rows).T.dropna()
+    T = len(Q)
+    mean = Q.mean(); se = Q.std(ddof=1) / np.sqrt(T)
+    spread = Q[4] - Q[0]
+    return mean, se, spread.mean(), spread.std(ddof=1)/np.sqrt(T), spread.mean()/(spread.std(ddof=1)/np.sqrt(T))
+
+chars = ["beta", "ldv", "mom"] + (["qual"] if DATA_SOURCE == "synthetic" else [])
+for c in chars:
+    mean, se, sp, sp_se, sp_t = quintile_report(frame, c)
+    qs = "  ".join(f"Q{i+1} {mean[i]*1e4:+6.1f}" for i in range(5))
+    print(f"{c:5s}: {qs}  | spread {sp*1e4:+.1f} bp (t {sp_t:+.2f})")
+```
+
+**Expected pattern (synthetic, with positive control).** beta/ldv/mom:
+quintile means within ±SE of zero, spreads |t| < 2 — the null controls
+stay silent, as designed (the generator plants no cross-sectional
+premium on computable characteristics; any "find" here is bug or fog).
+qual: near-monotone ladder, spread ≈ +60–75bp (the Q5−Q1 gap spans
+~2.3σ of a 25bp/σ premium), t ≈ +4 — **the positive control shines.**
+Real
+mode: beta flat-ish (megacap beta dispersion ≈ 0.8–1.4, compressed);
+ldv sorting is the liquidity/size muddle; mom shows the usual
+flicker (JT93's megacap echo, weakest in exactly this universe of
+giants) — all read through the caveat table of E5.
+
+## E3 — FM, univariate then joint
+
+```python
+print("=== univariate ===")
+tabs = {}
+for c in chars:
+    _, u, _ = fama_macbeth(frame.dropna(subset=[c]), "r_next", [c])
+    tabs[c] = u.loc[c]
+    print(f"{c:5s}: {u.loc[c, 'mean']*1e4:+7.1f} bp/sig   t {u.loc[c, 't']:+5.2f}")
+
+jcols = ["beta", "ldv", "mom"] + (["qual"] if DATA_SOURCE == "synthetic" else [])
+lam, joint, r2m = fama_macbeth(frame.dropna(subset=jcols), "r_next", jcols)
+print("\n=== joint ===")
+print((joint.loc[jcols].assign(mean=lambda d: d["mean"]*1e4, SE=lambda d: d["SE"]*1e4))[["mean","SE","t"]].round(2).to_string())
+print(f"\nmean monthly R2 {r2m:.3f}")
+print("lam ACF lag-1:", {c: f"{lam[c].autocorr(1):+.2f}" for c in jcols})
+```
+
+**Expected pattern (synthetic).** Univariate and joint nearly identical
+here (the generator's characteristics are ~independent — contrast with
+day 16's correlated world!): qual ≈ +25bp/σ, t ≈ +4; the three null
+characteristics |t| < 2 and *unstable across univariate/joint* — small
+numbers' noise, not absorption stories. λ̂_t ACF ≈ 0 → plain std/√T SEs
+suffice. **Real mode.** Expect momentum's univariate FM slope to be the
+largest of the three (sign positive in most long windows, t hovering
+1–2 in this universe) and the joint table to reveal ldv↔beta
+correlation effects (high-beta names are high-ADV names: the ellipse
+from day 9 again) — which is why the JOINT column is the one you ship.
+Interpretation discipline: every t here is read against the E4 controls,
+not against vibes. A small R² reading while you're here: synthetic
+R²̄ ≈ 0.10 — but ≈ 0.08 of that is the spurious fitted-R² floor
+(≈ (k−1)/(N−1) with 5 fitted numbers on 50 names) and only ~0.003 the
+plant. Monthly cross-sectional R²'s wear their k/N fog openly; adjust
+your excitement by the floor first (day 2's nested-R² lesson, again).
+
+## E4 — the controls, verdict
+
+```python
+if DATA_SOURCE == "synthetic":
+    # null control verdict: all three computable chars |t| < 2?  positive: qual t and recovery gap
+    rec = (joint.loc["qual", "mean"] - 0.0025) / joint.loc["qual", "SE"]
+    nulls_ok = all(abs(tabs[c]["t"]) < 2.5 for c in ["beta", "ldv", "mom"])
+    print(f"NULL control {'PASS' if nulls_ok else 'FAIL'} | positive control recovery {rec:+.1f} SEs from truth")
+else:
+    print("real mode: controls were exercised in synthetic mode before trusting this table.")
+```
+
+**Expected.** PASS both: nulls quiet, recovery within ~1–2 SE of the
+planted +25bp/σ. The canonical pipeline-bug signatures when NULL fails:
+mom computed with r_next's window inside (shift error → enormous fake
+premia); beta computed on overlapping monthly windows without NW
+(inflated t's as in day 8); quintile ranks computed across months
+(time-mixing the cross-section). When the positive control FAILS: the
+plant was inside an NaN-trimmed corner, or the per-month z-scoring
+standardized the WRONG axis (must be across names within month).
+
+## E5 — the caveat table (exemplar)
+
+| Caveat | Direction | Severity here | Mitigation |
+|---|---|---|---|
+| ADV ≠ market cap (proxy) | size slope confounded with liquidity premia; ambiguous | MEDIUM (we call it "liquidity/size" in print, never "size") | label + don't compare magnitudes to FF92's ME slopes |
+| Survivorship (universe = today's winners) | premia on risk-flavored chars biased positive (delisted losers' BM/size tilts invisible) | HIGH for any level claim; LOW for "is there structure inside megacaps" | disclose; bound with module-05 numbers (survivors' premium ≈ +1–2%/yr); defer full fix to point-in-time universes (module 13) |
+| Screen truncation (megacaps only) | slopes compressed toward zero — the size effect's habitat is excluded | HIGH for size, MEDIUM for beta | the honest scope line; no extrapolation beyond the universe |
+| Skip-month discipline | 12-1 would contaminate with short-term reversal (opposite sign) | solved by construction | the skip; log the choice |
+| Multiple testing | 3 chars × univariate+joint ≈ 9 looks | LOW-MEDIUM (pre-declared set; Bonferroni 0.017 noted) | pre-declaration + joint column as the ship |
+| Slope ACF | regime-persistent premia → std/√T overstates T | checked: all |ρ| < 0.15 | would NW the λ̂_t series otherwise (day 15 repair) |
+
+**The honest headline this study earns (synthetic-verified machinery,
+real-data caveats):** "In a 50-name megacap-survivor universe,
+2010→, FF92-style cross-sections find no robust priced characteristic
+among trailing beta and liquidity/size at monthly frequency, and
+suggestive momentum (t ≈ 1–2) whose regime variation module 07.21 will
+chase with the full JT93 construction; machinery validated on null and
++25bp/σ positive controls; all estimates condition on universe and
+screens as tabulated."
+
+**Common mistakes across the day.** Reporting the null controls'
+t = 1.3 as "marginal evidence" (under the planted null, t = 1.3 IS the
+expected fog; day 4's tournament applies to you, personally, here);
+comparing your ADV-slope magnitude to FF92's ME-slope (different
+regressors, different universes); silently using 42 names in 2011
+months and 50 in 2024 without a listing rule (state it: names enter at
+first valid month, and their early listings are the universe's known
+young-blood bias — logged, accepted).
+```

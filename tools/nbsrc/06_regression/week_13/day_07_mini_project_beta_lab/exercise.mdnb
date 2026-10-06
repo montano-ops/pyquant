@@ -1,0 +1,89 @@
+# Day 7 — Mini-Project: Beta Lab
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+from scipy import stats
+import matplotlib.pyplot as plt
+plt.rcParams["figure.figsize"] = (11, 5)
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+
+from qrc.data import get_prices
+from qrc.synth import synthetic_returns
+from qrc.universe import load_universe
+
+# --- data: wide daily log returns, 10 names + SPY ---
+# YOUR CODE (real: research50[:10] + SPY, start 2015; synthetic: an 11-asset
+# world, first column renamed SPY)
+```
+
+## Part 1 — The table
+
+Per name, full sample: β̂, classical SE, White HC1 SE, t(White), α̂ %/yr
+with its SE, R² — sorted by β̂, plus the SE-ratio column (White /
+classical) for the anomaly scan. One printed DataFrame is the
+deliverable.
+
+```python
+# YOUR CODE
+```
+
+## Part 2 — Rolling betas
+
+252-day rolling β̂ per name on one chart; ±2 SE band for ONE name.
+Hint: closed form — rolling β̂ = rolling cov / rolling var, and
+rolling σ̂_e² = σ̂_y²(1 − ρ̂²) gives rolling SEs without a single
+regression loop.
+
+```python
+# YOUR CODE
+```
+
+## Part 3 — Stability
+
+(a) Per name: 5th–95th percentile range of the rolling β̂, next to the
+full-sample SE — what fraction of the wiggle could be sampling noise?
+(b) Year-over-year beta persistence: per calendar year per name, the
+within-year β̂; then cross-sectional corr(year t, year t+1) averaged.
+(c) Optional: add the "adjusted beta" ⅔β̂ + ⅓ and state which failure
+it shrinks.
+
+```python
+# YOUR CODE
+```
+
+## Part 4 — The audit
+
+One markdown paragraph: benchmark, window, adjustment, universe — each
+with the direction of the distortion it could cause — ending with the
+sentence "These betas cannot be used for …".
+
+```python
+# YOUR AUDIT:
+```
+
+## Hints
+
+- Part 1: yesterday-R4's `ols_fit` — rebuild it here (again: the
+  rebuilds are the curriculum).
+- Part 2: `df.rolling(252).cov(m)` pairwise; pandas aligns both
+  panels. For the SE band pick the name with the widest wiggle.
+- Part 3(a): sampling noise of a rolling β̂ is ≈ the full-sample SE ×
+  √(T/252) only if windows were independent — they're not (they
+  overlap 251/252), so treat the comparison as suggestive, not exact,
+  and SAY that. A cleaner benchmark: simulate the same asset with a
+  CONSTANT true beta and see how much ITS rolling β̂ wanders (AR(1)
+  persistence of overlapping windows does the rest).
+- Persistence near 0.6–0.8 YoY is the real-data neighborhood; a
+  negative number means your pipeline is broken.

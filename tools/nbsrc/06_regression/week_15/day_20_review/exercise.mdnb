@@ -1,0 +1,97 @@
+# Day 20 — Review Exercises
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+from scipy import stats
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+```
+
+## E1 (L5) — Wednesday's machine, cold
+
+From scratch (no looking at day 15): synthetic 40-name × 96-month world,
+persistent characteristic z_i per name, returns = one-factor + noise with
+planted λ = +15bp (per cross-sectional σ). Estimate by Fama–MacBeth:
+λ̂, SE, t, mean R², λ̂_t ACF. Then z-scored interpretation: bp per month
+per 1σ. If the t lands 1.8–2.6, celebrate nothing — recycle the seed
+twice and watch the estimate wander within its SE.
+
+```python
+# YOUR CODE
+```
+
+## E2 (L6) — The doctor's exam
+
+A colleague shows you four results. Diagnose each (mechanism + what you
+demand before believing it), one sentence each: (a) trailing-beta deciles
+vs next-month r in a 50-name megacap-universe: flat, t = 0.9; (b) 12-1
+momentum long-short: mean −25bp/month, t = −2.1, "momentum is a myth,
+sell the winners!"; (c) a characteristic built as 4-year trailing average
+of the characteristic itself: FM t = 6.8; (d) long-horizon regression,
+21-day forward sums, reported t = 3.1 with White SEs.
+
+```python
+# YOUR ONE-SENTENCE DIAGNOSES:
+```
+
+## E3 (L5) — Rolling vs expanding, measured
+
+Generate a ramp truth: β_t sits at 0.6 for 600 days, moves linearly to
+1.4 by day 2600, holds there through day 4000; y_t = 0.0003 + β_t x_t +
+ε(1%), x N(0,1.1%). Estimate rolling 252 and expanding β's. At plateaus,
+which estimator sits inside its ±2·[σ_e/(σ_x√W)] band, and how often?
+At the transition, measure the crossing lag of each (25% and 75%
+crossings vs the truth's) and give each lag its mechanism sentence.
+
+```python
+# YOUR CODE
+```
+
+## E4 (L5) — The tournament, one world, four SEs
+
+Fresh world: N = 60 names, T = 150 months, common factor with corr ≈ 0.5
+across names within month, persistent characteristic, true premium ZERO.
+One run: pooled classical t, White t, NW(6) t, FM t. 300 runs: which
+rejection rate lands ~5%? Why do three of the four columns agree with
+each other here (be precise — what does each assume about the OTHER
+axis)?
+
+```python
+# YOUR CODE
+```
+
+## E5 (L7) — The memo
+
+Write the 6-line memo reviewing a proposed study: "12-1 momentum
+quintiles in the recovered R1000 universe, 2018-, rebalanced weekly,
+t = 3.7 significant." (Universe caveat, construction caveat, frequency
+caveat vs 05.18's findings, testability of t, missing controls, and the
+one experiment you demand.) Six lines, each a clause a referee could
+quote.
+
+```python
+# YOUR MEMO:
+```
+
+## Hints
+
+- E1: the whole FM function from day 15 is ~12 lines; that you can
+  rewrite it cold is the point of the drill.
+- E2(b): construction, not conclusion — which month is missing?
+  (c): what does a 4-year stale characteristic do to cross-sectional
+  dividedness? (d): which estimator, and what horizon?
+- E3: truth plateaus during the flat segments; the transition's true
+  duration is 4000·(clamp span) — crossings measure estimator lag.
+- E4: NW(6) on monthly panel world — NW sees time; what axis is the
+  dependence on?

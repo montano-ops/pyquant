@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import json
 import sys
-import uuid
+import hashlib
 from pathlib import Path
 
 SRC_ROOT = Path(__file__).resolve().parent / "nbsrc"
@@ -63,19 +63,31 @@ def parse_source(text: str) -> list[tuple[str, str]]:
     return cells
 
 
-def _to_cell(kind: str, src: str) -> dict:
+def _stable_id(kind: str, src: str, ordinal: int) -> str:
+    """Deterministic cell id (8 hex chars): content hash + cell ordinal.
+
+    Regenerating notebooks must be idempotent — random ids churn the git
+    diff of every notebook on every run, drowning real content changes in
+    noise. The ordinal disambiguates cells with identical content within
+    one notebook.
+    """
+    return hashlib.sha1(f"{kind}:{ordinal}:{src}".encode()).hexdigest()[:8]
+
+
+def _to_cell(kind: str, src: str, ordinal: int = 0) -> dict:
     lines = src.splitlines()
     source = [line + "\n" for line in lines[:-1]] + [lines[-1]]
+    cell_id = _stable_id(kind, src, ordinal)
     if kind == "markdown":
         return {
             "cell_type": "markdown",
-            "id": uuid.uuid4().hex[:8],
+            "id": cell_id,
             "metadata": {},
             "source": source,
         }
     return {
         "cell_type": "code",
-        "id": uuid.uuid4().hex[:8],
+        "id": cell_id,
         "metadata": {},
         "execution_count": None,
         "outputs": [],
@@ -84,8 +96,18 @@ def _to_cell(kind: str, src: str) -> dict:
 
 
 def build_notebook(text: str) -> dict:
+    cells = parse_source(text)
+    # ordinal counts occurrences of (kind, src) so far -> unique ids even for
+    # duplicated cells, and stable across runs
+    seen: dict = {}
+    out = []
+    for kind, src in cells:
+        key = (kind, src)
+        ordinal = seen.get(key, 0)
+        seen[key] = ordinal + 1
+        out.append(_to_cell(kind, src, ordinal))
     return {
-        "cells": [_to_cell(kind, src) for kind, src in parse_source(text)],
+        "cells": out,
         "metadata": {
             "kernelspec": {"display_name": "Python 3", "language": "python", "name": "python3"},
             "language_info": {"name": "python", "version": "3.11"},

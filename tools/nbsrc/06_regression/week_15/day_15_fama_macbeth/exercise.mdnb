@@ -1,0 +1,117 @@
+# Day 15 — Exercise: Fama–MacBeth
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+from scipy import stats
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+
+def ols_multi(X_cols, y):
+    X = np.column_stack([np.ones(len(y))] + [np.asarray(c, float) for c in X_cols])
+    y = np.asarray(y, float)
+    n, k = X.shape
+    XtX_inv = np.linalg.inv(X.T @ X)
+    b = XtX_inv @ X.T @ y
+    e = y - X @ b
+    s2 = e @ e / (n - k)
+    se = np.sqrt(np.diag(s2 * XtX_inv))
+    r2 = 1 - (e @ e) / ((y - y.mean()) @ (y - y.mean()))
+    return {"b": b, "se": se, "r2": r2, "resid": e}
+```
+
+## E1 (L3) — The worked miniature, by hand
+
+Three months, four names, one characteristic. Cross-sectional z-scores
+given; next-month returns given.
+
+```python
+z = pd.DataFrame({"A": [ 1.2,  0.4, -1.5, -0.1],
+                  "B": [ 0.3, -1.1,  0.7,  0.1],
+                  "C": [-0.8,  0.2,  0.4,  0.2]}, index=["n1","n2","n3","n4"]).T
+r_next = pd.DataFrame({"A": [0.012, -0.028, 0.004, -0.017],
+                       "B": [0.031,  0.006, -0.011, 0.009],
+                       "C": [-0.008,  0.021, 0.016, -0.002]}, index=["n1","n2","n3","n4"]).T
+# YOUR CODE: per-month cross-sectional slope, then FM mean / SE / t.
+# Then the pooled regression (12 obs, classical SE) for contrast.
+```
+
+## E2 (L4) — `fama_macbeth()`: the machine
+
+Write the function: input a long frame indexed (month, name) with a
+response column and characteristic columns; per month, z-score the
+characteristics ACROSS names, run the cross-sectional OLS; return the
+λ̂_t DataFrame. Then the FM table: mean, SE, t, share-positive, mean
+monthly R² per column. Signature given—fill it.
+
+```python
+def fama_macbeth(frame, ycol, xcols):
+    # YOUR CODE
+    ...
+
+# def fm_table(lams): mean, SE (std/sqrt(T)), t, share>0, mean R2
+```
+
+## E3 (L4) — The null tournament: pooled vs FM
+
+World: N = 50 assets, T = 120 months. Monthly returns = β_i · m_t +
+ε_it with a common factor; characteristic z_i drawn ONCE per name (a
+PERSISTENT characteristic — think size, vol levels), TRUE effect = 0.
+300 runs. Per run: pooled classical t on the stacked regression, and
+the FM t. Report rejection rates at |t| > 1.96 for each. Optional
+wrinkle (worth five minutes): rerun with z redrawn FRESH each month and
+explain the difference — it's the mechanism, not a detail.
+
+```python
+# YOUR CODE
+```
+
+## E4 (L5) — FM on your panel
+
+Build the day-14 monthly frame (same construction; synthetic mode gets
+the reveal-plant here: vol −20bp/σ cross-sectional, dv nothing). Run
+fama_macbeth + fm_table on r_next ~ [vol, ldv]. Also the λ̂_t ACF (is
+the NW-on-slopes correction needed?), and a histogram or monthly-plot
+of λ̂_vol,t. Interpret in two sentences.
+
+```python
+# YOUR CODE
+```
+
+## E5 (L6) — The two slopes you now own
+
+Day 14 computed a *time-series* slope per name (does MY high-vol month
+predict MY next month?); day 15 computes a *cross-sectional* slope per
+month (do high-vol NAMES beat low-vol names next month?). Different
+questions, potentially different signs. Give one economic mechanism
+that could make them disagree, then state which one FF92's tables use.
+
+```python
+# Your answer:
+```
+
+## Hints
+
+- E1: per-month slope = cov(z_t, r_t)/var(z_t) with intercept — the
+  numbers are small enough to do with a calculator; pooled slope
+  compares but its classical SE assumes 12 independent rows (they are
+  not — what correlates here? at n=4 the point is qualitative).
+- E2: per month: dropna on xcols+ycol, need ≥ 10 names; z = (c −
+  c.mean())/c.std() within the month; store slopes AND the monthly R².
+- E3: the common-factor world is synthetic_returns-style: m_t, β_i,
+  ε_it — build monthly directly (no daily needed). Pooled SE flavor
+  variants: use your se_nw and White from week 14 on the stacked X.
+- E4: λ̂_t ACF |.>| 0.1 → apply se_nw to the λ̂_t SERIES (regress λ̂_t on
+  a constant with HAC SEs — a clean trick: ols_multi([ones], lam) with
+  se_nw on that design... think: mean of an autocorrelated series =
+  intercept regression).

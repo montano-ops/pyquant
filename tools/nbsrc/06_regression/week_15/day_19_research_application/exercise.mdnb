@@ -1,0 +1,122 @@
+# Day 19 — Research Application: Partial FF92 on Your Panel
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+from scipy import stats
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+
+def ols_multi(X_cols, y):
+    X = np.column_stack([np.ones(len(y))] + [np.asarray(c, float) for c in X_cols])
+    y = np.asarray(y, float)
+    n, k = X.shape
+    XtX_inv = np.linalg.inv(X.T @ X)
+    b = XtX_inv @ X.T @ y
+    e = y - X @ b
+    s2 = e @ e / (n - k)
+    se = np.sqrt(np.diag(s2 * XtX_inv))
+    r2 = 1 - (e @ e) / ((y - y.mean()) @ (y - y.mean()))
+    return {"b": b, "se": se, "r2": r2}
+
+def fama_macbeth(frame, ycol, xcols):
+    rows, r2s = {}, {}
+    for m, g in frame.groupby(level=0):
+        g = g[[ycol] + xcols].dropna()
+        if len(g) < 10:
+            continue
+        Zs = [(g[c] - g[c].mean()) / g[c].std() for c in xcols]
+        f = ols_multi(Zs, g[ycol].values)
+        rows[m] = f["b"]; r2s[m] = f["r2"]
+    lam = pd.DataFrame(rows, index=["const"] + xcols).T
+    T = len(lam)
+    out = pd.DataFrame({"mean": lam.mean(), "SE": lam.std(ddof=1)/np.sqrt(T),
+                        "t": lam.mean()/(lam.std(ddof=1)/np.sqrt(T))})
+    return lam, out, pd.Series(r2s).mean()
+```
+
+## E1 (L5) — Characteristics + shift audit
+
+Build the (month, name) frame: `beta` (trailing 252d, vs SPY), `ldv`
+(log median dollar volume, month t), `mom` (12-2: cumulative log
+return, months t−12..t−2), and `r_next`. Synthetic mode builds the
+same frame from a 50-asset world (its cross-sectional mean return is
+the "market"). Print the shift audit line proving every
+characteristic's last input precedes r_next's first day.
+
+```python
+# YOUR CODE
+```
+
+## E2 (L5) — Quintile sorts
+
+Per month: quintile ranks per characteristic (across names). Mean
+r_next per quintile, averaged over months, with per-quintile SEs and
+the Q5−Q1 spread's t across months. Check monotonicity visually
+(print or plot). Which characteristic sorts speak loudest in your
+world?
+
+```python
+# YOUR CODE
+```
+
+## E3 (L5) — FM, univariate then joint
+
+fama_macbeth on r_next ~ each characteristic singly, then jointly.
+λ̂_t ACF for each joint slope (NW-nudge if any |ρ| > 0.15). The full
+table with bp/σ, t, and for completeness the quintile-spread row.
+Compare with E2's sorts: same story or not?
+
+```python
+# YOUR CODE
+```
+
+## E4 (L4) — The two synthetic controls
+
+Synthetic mode only (real mode: read, don't run): (a) NULL control —
+with no planting, the null characteristics' |t| should sit below ~2 —
+a "discovery" here means a pipeline bug; what are the usual suspects?
+(b) POSITIVE control — plant a premium (+25bp/σ) on a fixed per-name
+"quality" characteristic and confirm recovery within ~2 SEs. Report
+both controls' outcomes before any real-mode numbers are believed.
+
+```python
+# YOUR CODE
+```
+
+## E5 (L7) — The caveat table
+
+Six rows: proxy quality (ADV≠size), survivorship (universe = today's
+winners), screen truncation (megacap dispersion compressed), skip/
+timing discipline (why 12-2), multiple testing (3 pre-declared
+characteristics), slope-ACF/regimes. Per row: direction of the bias,
+severity for THIS study's conclusions, the mitigation you applied or
+defer (and to which module). This table IS the research output.
+
+```python
+# YOUR TABLE:
+```
+
+## Hints
+
+- E1: month-end beta = daily rolling(252).cov/var sampled at month
+  ends; mom via r_m.rolling(11).sum().shift(1); frame joins at
+  (month t characteristics, month t+1 returns) — build r_next via
+  groupby-name shift(-1) like day 14.
+- E2: quintile with pd.qcut(rank(method="first")) per month to avoid
+  ties explosions; SE on the spread = std(monthly spread)/√T.
+- E4(b): plant at the MONTHLY level (r_m += 0.0025·z_q) and disclose
+  it; recovery target t ≈ +3..+6 at these scales.
+- E5: the mitigation column may honestly contain "none — report as
+  limitation" for survivorship; what matters is the bound you'd put
+  on it (module 05's BGI&R numbers: 1–2%/yr survivors' premium).

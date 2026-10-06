@@ -1,0 +1,108 @@
+# Day 14 — Mini-Project: The Predictive Regression
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+from scipy import stats
+import matplotlib.pyplot as plt
+plt.rcParams["figure.figsize"] = (11, 4)
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices, synthetic_returns
+from qrc.universe import load_universe
+```
+
+## Log-first: the hypotheses
+
+Before any code: one line each — expected sign of (a) lagged monthly
+realized vol on next-month returns, (b) lagged dollar volume — with the
+mechanism behind each. Write them as comments NOW.
+
+```python
+# (a) vol sign and why:
+# (b) volume sign and why:
+```
+
+## Part 1 — The panel with shift discipline
+
+Build the monthly study frame: per name per month — realized vol (from
+daily log returns within month t), log median dollar volume (within
+month t), and next month's return. PRINT the shift audit: for one
+name, the max timestamp feeding month-t predictors vs the min/max
+timestamps inside month t+1's return. Non-overlapping months only.
+
+```python
+# YOUR CODE
+```
+
+## Part 2 — The regressions
+
+Per-name time-series fit of r_{t+1} on [z(σ̂_t), z(logDV_t)]
+(z-scored per name). Tabulate the two slopes per name; then the
+cross-name average slope with its cross-sectional SE (mean/√N of the
+slopes — the day-15 formalism is exactly this). Report VIF per name's
+fit (median). SE flavor statement: one line.
+
+```python
+# YOUR CODE
+```
+
+## Part 3 — R², honestly economic
+
+Median per-name R². Then the only number that matters: the vol
+coefficient converted to "bp of next-month return per IQR of realized
+vol" — compute it for the cross-name mean slope. Calibrate against the
+lesson: is this 'large' or 'small' for a monthly predictive regression?
+
+```python
+# YOUR CODE
+```
+
+## Part 4 — Stability
+
+Split the sample in half; per-name vol-slope sign agreement across
+halves (a count, not just a vibe). Rolling 36-month vol slope for ONE
+name, plotted. One paragraph: what drifts, what persists, what you'd
+believe out-of-sample.
+
+```python
+# YOUR CODE
+```
+
+## Part 5 — The audit + honest headline
+
+≥4 channels with directions (multiple testing; persistent regressor /
+Stambaugh flavor; survivorship-by-universe; per-name power limits;
+cross-correlation of same-month residuals). Then the synthetic-world
+reveal cell (run it LAST in synthetic mode): the planted truth signs.
+Did you recover vol? Did you avoid "discovering" a volume effect?
+
+```python
+# YOUR AUDIT
+# SYNTHETIC REVEAL (run last): print the planted signs from the solution
+```
+
+## Hints
+
+- Part 1: monthly period index: `df.to_period("M")`; groupby-period
+  agg; `.groupby(level=...)` per name then shift(1) the whole
+  predictor block — shift AFTER aggregation, never before.
+- Part 2: z-scoring per name: (s − s.mean())/s.std() on that name's
+  time series. VIF of two z-scored regressors is the same number for
+  every name — compute it from corr(z_vol, z_dv).
+- Part 3: IQR-to-bp: mean slope × (IQR of z-scored vol = ~1.35 sigma)
+  × 1e4; the anomaly literature's monthly effects are 30–100 bp/IQR.
+- Part 4: sign agreement under pure noise is ~50%; above 65% starts
+  meaning something at 50 names.

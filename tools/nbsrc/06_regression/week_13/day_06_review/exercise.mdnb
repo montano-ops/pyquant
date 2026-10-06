@@ -1,0 +1,87 @@
+# Day 6 — Exercise: Review (Week 13)
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+from scipy import stats
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+```
+
+## R1 (L1) — Cold dump
+
+String-fractional credit is the enemy of retrieval: from a BLANK cell,
+write (a) the two-variable closed forms; (b) SE(β̂)'s closed form;
+(c) the sandwich estimator with White's meat; (d) the OVB formula.
+Only then scroll.
+
+```python
+# YOUR DUMP:
+```
+
+## R2 (L4) — The timing drill
+
+From a blank cell, no past code: write `ols_fit(x, y)` (coefficients,
+classical SEs, White HC1 SEs, t, R², residuals), verify all outputs vs
+statsmodels on a planted world (β = 0.75, heteroskedastic-on-|x|
+noise), and print the three-line audit (time-bucket var, ACF, excess
+kurtosis). Time-box: 20 minutes. Log your time and your first bug.
+
+```python
+# YOUR CODE
+```
+
+## R3 (L3) — Arithmetic, by hand
+
+(a) n = 1000, σ_e = 0.012, σ_x = 0.008: SE(β̂)? (b) Half-width of the
+95% CI? (c) The n for half-width ≤ 0.01? (d) In the ALL world of day
+4: with corr(m, h) = 0.7, var equal, γ = 0.5, what is plim β̂ if true
+β = 0.9?
+
+```python
+# YOUR CODE
+```
+
+## R4 (L5) — One regression, fully dressed
+
+Fit your chosen asset ~ market (real or synthetic), and produce the
+full research-grade output block: β̂ with BOTH SEs and both t's, α̂
+annualized with SE, R² with its corr² cross-check, the residual audit
+line, and a two-sentence verdict that names the violations found and
+the SE you consequently trust. This block (in polished form) is what
+day 7's beta lab multiplies by ten names.
+
+```python
+# YOUR CODE
+```
+
+## R5 (L7) — The table you refuse to publish
+
+A draft table reports: 12 regressions, classical SEs only, three
+t-stats > 2, and a concluding sentence "three robust effects".
+Compose your review comment citing this week's numbers (be specific:
+which rejection rates, which repair each effect needs, and what to
+report instead).
+
+```python
+# Your answer:
+```
+
+## Hints
+
+- R3(c): half-width scales as 1/√n; needing it to drop from what you
+  computed in (b) to 0.01 tells you the √n ratio — square it.
+- R4: if your two SE flavors agree within ~5%, say so — agreement is
+  informative (it means days 4–5 found little to repair *this time*).
+- R5: the reviewer's strongest evidence is your day-4 tournament row
+  (c) and day-5 tournament row — cite numbers, not adjectives.

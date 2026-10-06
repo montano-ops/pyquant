@@ -1,0 +1,98 @@
+# Day 10 — Exercise: Diagnostics
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+from scipy import stats
+import matplotlib.pyplot as plt
+plt.rcParams["figure.figsize"] = (10, 7)
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+
+def ols_fit(x, y):
+    x = np.asarray(x, float); y = np.asarray(y, float)
+    n = len(x)
+    X = np.column_stack([np.ones(n), x])
+    XtX_inv = np.linalg.inv(X.T @ X)
+    b = XtX_inv @ X.T @ y
+    e = y - X @ b
+    s2 = e @ e / (n - 2)
+    se = np.sqrt(np.diag(s2 * XtX_inv))
+    return {"b": b, "se": se, "resid": e, "yhat": X @ b, "X": X, "XtX_inv": XtX_inv}
+```
+
+## E1 (L4) — Build the page
+
+Fit your market-model regression (real AAPL~SPY from 2015, or the
+synthetic pair), then produce the FOUR-panel page: e vs ŷ, e vs time,
+QQ vs normal (add t(5) for comparison), |e| vs |x|. Under the figure,
+write the "demands" list: what each panel requires of your SEs or
+specification.
+
+```python
+# YOUR CODE
+```
+
+## E2 (L4) — Leverage and Cook's D, computed by you
+
+Compute hₜ = xₜ'(XᵀX)⁻¹xₜ for all t and Cook's D. Print the top-5
+dates by each. Thresholds: h > 3·k/n, D > 4/n. Are the top-h days the
+top-D days? Name the quadrant structure you observe.
+
+```python
+# YOUR CODE
+```
+
+## E3 (L5) — The delete-and-report protocol
+
+Remove the top-5 D days; refit; report both β̂'s, both SEs, and the Δβ̂
+as a multiple of SE. Then the judgment line: is your β̂ a crash-days
+artifact, or do the crash days sit on the line and merely LOOK
+dangerous? (Both outcomes are common; the protocol's job is knowing
+which.)
+
+```python
+# YOUR CODE
+```
+
+## E4 (L4) — A manufactured nonlinear world, diagnosed
+
+Plant it: y = 0.7x + 0.0008·(100x)² · 1[x<0] + ε (crash-squared term
+on down moves only), x daily market. Fit the LINEAR model, run your
+four panels, and write which panels catch it and what each shows.
+Then fit y ~ x + x² and watch panel 1 clean up.
+
+```python
+# YOUR CODE
+```
+
+## E5 (L7) — The boundary
+
+Your top-D day is 2020-03-16 (or the synthetic equivalent). A
+consultant advises: "exclude it; it's an outlier." Argue BOTH sides in
+two sentences each — the statistical case for exclusion and the
+research case against — then state your disposition.
+
+```python
+# Your answer:
+```
+
+## Hints
+
+- E2: h = np.einsum("ti,ij,tj->t", X, XtX_inv, X) or a row loop;
+  D_t = (e_t² / (k·s²)) · h_t / (1−h_t)².
+- E3: report Δβ̂/SE; >0.5 means the points genuinely steer the line.
+- E4: the e–ŷ panel shows curvature as a frown/frown-wing on the left;
+  |e| vs |x| shows the down-side fan. The QQ will ALSO flag it (the
+  planted term is skew) — a reminder that panels disagree because they
+  police different things.

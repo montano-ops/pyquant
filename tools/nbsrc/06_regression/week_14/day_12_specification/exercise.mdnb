@@ -1,0 +1,107 @@
+# Day 12 — Exercise: Specification: Logs, Dummies, Interactions
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+from scipy import stats
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+
+def ols_multi(X_cols, y, names=None):
+    X = np.column_stack([np.ones(len(y))] + [np.asarray(c, float) for c in X_cols])
+    y = np.asarray(y, float)
+    n, k = X.shape
+    XtX_inv = np.linalg.inv(X.T @ X)
+    b = XtX_inv @ X.T @ y
+    e = y - X @ b
+    s2 = e @ e / (n - k)
+    se = np.sqrt(np.diag(s2 * XtX_inv))
+    r2 = 1 - (e @ e) / ((y - y.mean()) @ (y - y.mean()))
+    names = ["const"] + (names or [f"x{j}" for j in range(1, k)])
+    return pd.DataFrame({"b": b, "se": se, "t": b/se}, index=names), {"resid": e, "r2": r2}
+```
+
+## E1 (L3) — The grammar drill, planted world
+
+Plant the truth: calm β = 1.0 (90% of days), crisis β = 1.4 (10%),
+γ_level = −0.001 in crisis. x ~ N(0, 1%); ε ~ N(0, 1.2%). Estimate
+y ~ x + D + D·x with the true D. Report β̂, γ̂, δ̂ with t's, and
+confirm β̂ + δ̂ ≈ 1.4. Then fit WITHOUT the interaction term and
+report the mongrel β̂ — which weighted average did OLS recover?
+
+```python
+# YOUR CODE
+```
+
+## E2 (L4) — The dummy trap, sprung gently
+
+Add a second dummy C = 1 − D (the complement) and fit
+y ~ x + D + C + D·x. Print what happens (statsmodels will fight back
+with a singular matrix or nonsense SEs — numpy returns a near-
+singular sweep). Compute rank(X) vs X's column count. One line: which
+assumption did you violate, and which column must leave?
+
+```python
+# YOUR CODE
+```
+
+## E3 (L5) — Real crash betas, declared threshold
+
+Real AAPL ~ SPY (2015→) or the synthetic pair: build
+D = (21-day rolling |market| mean > its full-sample 80th percentile),
+declared BEFORE fitting. Fit y ~ x + D·x (no level term first — why
+is that acceptable here? think about what α means daily). Report
+β_calm, β_stress = β̂ + δ̂, t(δ). Then refit WITH D to check whether
+there is a regime level shift hiding in your slope shift.
+
+```python
+# YOUR CODE
+```
+
+## E4 (L5) — The size transform, both axes
+
+Simulate the 200-stock cross-section with a per-DOUBLING size effect:
+r_i = 0.005 − 0.002·log2(mcap_i/1e9) + ε, mcap log-uniform 1e8→1e12.
+Fit r ~ mcap (raw dollars), r ~ log(mcap), r ~ log2(mcap/1e9). Compare
+R² and the residual ACF across size deciles for the raw fit. Which
+spec recovers the true structure, and what did the raw-dollar fit do
+with its information?
+
+```python
+# YOUR CODE
+```
+
+## E5 (L7) — Threshold mining, executed to be convicted
+
+On the E3 data, write the loop a p-hacker would write: thresholds
+50th–95th pct by 5, refit each, keep the best t(δ). Report the
+"optimized" t and the honest t from E3. Then the paragraph: why the
+optimized number is not evidence, and what the honest report shows.
+
+```python
+# YOUR CODE
+```
+
+## Hints
+
+- E1: the no-interaction fit's β̂ ≈ 0.9·1.0 + 0.1·1.4 ≈ 1.04 ONLY if γ
+  ≈ 0; with γ = −0.001 in a no-D fit the level shift leaks into the
+  slope too (x and D correlate in crisis? — actually here it leaks
+  into the intercept; fit all three variants and see).
+- E3: "no level term" — the daily α was ~0 in week 13's fits; if
+  yours wasn't, keep D in. The test you care about is δ.
+- E4: raw-dollar regression: top-decile mega-caps supply ~all the
+  variance of x (10^12 vs 10^8), so the fit is a 3-point story; check
+  Cook's D from day 10 and nod knowingly.
+- E5: the honest report also includes the NUMBER of thresholds tried —
+  the search itself is part of the result (module 04.11).

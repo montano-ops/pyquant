@@ -1,0 +1,164 @@
+# Day 11 — Solution: Outliers & Robustness: Winsorizing
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+from scipy import stats
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+
+def ols_fit(x, y):
+    x = np.asarray(x, float); y = np.asarray(y, float)
+    n = len(x)
+    X = np.column_stack([np.ones(n), x])
+    XtX_inv = np.linalg.inv(X.T @ X)
+    b = XtX_inv @ X.T @ y
+    e = y - X @ b
+    s2 = e @ e / (n - 2)
+    se = np.sqrt(np.diag(s2 * XtX_inv))
+    return {"b": b, "se": se, "resid": e}
+
+def winsor(s, p=0.01):
+    lo, hi = np.quantile(s, [p, 1 - p])
+    return np.clip(s, lo, hi)
+```
+
+## E1 — one giant day
+
+```python
+rng = np.random.default_rng(8)
+n = 1000
+x = rng.normal(0, 0.01, n)
+y = x + rng.normal(0, 0.01, n)
+y[500] = -0.30                                          # the bad print
+q01 = np.quantile(y, 0.01)
+print(f"1% clip level: {q01:+.4f}  (corrupted value {y[500]:+.4f} gets clipped to it)")
+
+for tag, xx, yy in [("raw", x, y),
+                    ("y-winsor 1%", x, winsor(y)),
+                    ("day deleted", np.delete(x, 500), np.delete(y, 500))]:
+    f = ols_fit(xx, yy)
+    print(f"{tag:14s}: beta {f['b'][1]:+.3f}  SE {f['se'][1]:.4f}  n {len(xx)}")
+```
+
+**Expected pattern.** Raw: β̂ visibly dragged (one point = ~4 SE of pull on
+this seed) with an *inflated* SE — the classic double damage. Winsorized:
+β̂ within a notch of the truth and SE back near 0.0007-realm; the bad point
+was clipped to ≈ −0.03 (still wrong-signed for that day's x but 10×
+smaller); the NINE honest tail days also got clipped — the price of
+indiscriminate repair, visible in mean|y| shifting. Deleted: β̂ ≈ truth,
+n = 999, and the calendar now has a hole (irrelevant here; fatal in an
+autocorrelation-stacked design — day 8's world). **The intentional
+discovery: winsorizing is a *blunt* repair that worked because the bad
+point was the extreme; when bad prints hide INSIDE the tails, only
+surgical (logged) deletion works — E4.**
+
+## E2 — the stability tournament
+
+```python
+n_runs = 500
+b_raw, b_win = np.empty(n_runs), np.empty(n_runs)
+for i in range(n_runs):
+    rng = np.random.default_rng(20000 + i)
+    x = rng.normal(0, 0.01, 1000)
+    eps = rng.standard_t(4, 1000) / np.sqrt(2) * 0.012     # t(4), sigma 1.2%
+    y = x + eps
+    b_raw[i] = ols_fit(x, y)["b"][1]
+    b_win[i] = ols_fit(x, winsor(y))["b"][1]
+print(f"raw:      E {b_raw.mean():+.3f}  sd {b_raw.std(ddof=1):.4f}")
+print(f"winsor-y: E {b_win.mean():+.3f}  sd {b_win.std(ddof=1):.4f}  "
+      f"(sd cut {100*(1 - b_win.std(ddof=1)/b_raw.std(ddof=1)):.0f}%)")
+```
+
+**Expected numbers.** sd(raw) ≈ 0.00045–0.00055; winsor cuts it ~15–35% —
+real stability, bought and paid for. The price line: E[β̂_winso] ≈ 0.94–0.97
+— **a ~3–6% downward bias toward the calm-regime slope**, because the
+tails carry slope information in this world (big |y| days are big-|x| days
+partially). The trade: variance for bias. Forbidden use: any question
+whose answer lives in the tails — crisis hedging ∈ (crisis β), tail-risk
+pricing, vol forecasting — there the bias is not a rounding error, it is
+the object you erased. Common mistake to self-audit: quoting the smaller
+winsorized SE as "better" without the bias sentence.
+
+## E3 — the asymmetric-stakes audit
+
+```python
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    rr = np.log(get_prices(["TSLA", "SPY"], start="2015-01-01")).diff().dropna()
+else:
+    p = synthetic_prices(n_days=2500, n_assets=2, seed=99, corr=0.35, sigma=0.02)
+    rr = np.log(p).diff().dropna(); rr.columns = ["TSLA", "SPY"]
+
+x, y = rr["SPY"].values, rr["TSLA"].values
+rows = {}
+for tag, xx, yy in [("raw", x, y), ("winso y", x, winsor(y)),
+                    ("winso x", winsor(x), y), ("winso both", winsor(x), winsor(y))]:
+    f = ols_fit(xx, yy)
+    rows[tag] = [f["b"][1], f["se"][1]]
+print(pd.DataFrame(rows, index=["beta", "SE"]).T.round(3).to_string())
+```
+
+**Expected pattern (real TSLA).** Raw β̂ ≈ 1.4–1.9; winso-y pulls it DOWN
+≈ 0.1–0.3 (TSLA's wild days are data, and they lean on the slope
+estimates); winso-x barely moves anything (SPY's tail clips are rarely
+TSLA's); both ≈ winso-y. Dispositions: (i) the calm-regime optimizer eats
+*winso-y* with a documented-bias note — its objective is squared-error in
+ordinary regimes and the winsorized estimator's MSE is better there;
+(ii) the crisis-hedge sizing takes **raw** (or better: raw + a day-12
+crisis interaction) because the hedge's whole job is the tail days the
+clip erased. **Same data, same regression, two defensible columns — the
+choice is declared by the use, not discovered in the t-statistics.**
+
+## E4 — the FF-style characteristic clip
+
+```python
+rng = np.random.default_rng(42)
+n = 200
+z = stats.zscore(np.exp(rng.normal(0, 0.8, n)))          # heavy right tail
+r = 0.004 + 0.010 * z + rng.normal(0, 0.03, n)
+bad = rng.choice(n, size=4, replace=False)               # 2% bad prints
+z_dirty = z.copy(); z_dirty[bad] *= 100
+
+for tag, xx in [("clean z (oracle)", z), ("dirty z", z_dirty),
+                ("dirty z, winsor 1%", winsor(z_dirty)), ("dirty z, prints removed", np.delete(z_dirty, bad))]:
+    f = ols_fit(xx, r if "removed" not in tag else np.delete(r, bad))
+    print(f"{tag:26s}: slope {f['b'][1]*1000:+.2f} bp/z   SE {f['se'][1]*1000:.2f}   t {f['b'][1]/f['se'][1]:+.2f}")
+```
+
+**Expected pattern.** Dirty z: slope crushed toward zero with absurd SE —
+the ×100 prints own the XᵀX. Winsor 1%: *partial* repair at best — with
+2% corruption the 1% clip leaves two of four prints in, still poisoning;
+worse, on the ORACLE row winsorizing clean z visibly attenuates/destabilizes
+the slope because the gradient lived in the right-tail names. Surgical
+removal: slope back at truth (SE honest), with the data-quality log
+justifying each deletion by name. **The asymmetry now has teeth: clip
+*values* when tails are untrusted magnitudes (data errors), delete *rows*
+when observations are provably broken, and never call the first a cure for
+the second.** (The coming FF92 days lean hard: papers winsorize
+*characteristics* exactly because they can't prove each print dirty — and
+they measure characteristics, never returns, for the E2/E3 reasons.)
+
+## E5 — the methods paragraph (exemplar; and the stopper)
+
+"All continuous regressors are winsorized at the 1st/99th percentiles,
+chosen ex ante per the literature convention, BEFORE any hypothesis test;
+the primary specification uses this rule. Sensitivity: raw (t = 1.7),
+2.5% (t = 2.4), 5% (t = 1.9) — the effect's significance is
+threshold-dependent and we therefore characterize it as suggestive rather
+than robust; the 1% figure quoted in the abstract is accompanied by this
+full set in Table X." Stopper sentence, for the colleague: **"A result
+that exists only inside one clip-rule band is not robust TO winsorization
+— it is a joint claim about the effect AND the clip; pick the clip by
+principle (before seeing t's) or report the whole fan, because '2.1–2.4'
+omits the two numbers that vote against you."**

@@ -1,0 +1,102 @@
+# Day 3 — Exercise: R², Standard Errors, t-Stats
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+from scipy import stats
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+```
+
+## E1 (L4) — Grow your `ols()` into `ols_fit()`
+
+Extend day 1's function to return a small dict: alpha, beta, se_alpha,
+se_beta, t_alpha, t_beta, r2, resid. Implement it with the matrix
+formula σ̂²(XᵀX)⁻¹ ( NOT the closed form — the matrix version is what
+generalizes to k regressors on day 9). Then verify against
+statsmodels: coefficients, SEs, t's, and R² all matching < 1e-10 —
+on the planted world below (truth: α=0.0002, β=0.80, σ_e=0.010).
+
+```python
+rng = np.random.default_rng(3)
+m = rng.normal(0.0005, 0.011, 1200)
+y = 0.0002 + 0.80 * m + rng.normal(0, 0.010, 1200)
+
+# YOUR CODE
+```
+
+## E2 (L3) — The CI, by hand
+
+From your E1 output: build the 95% CIs for α̂ and β̂ using
+stats.t.ppf(0.975, n−2). Does each contain its truth? Would you *expect*
+it to, 95 times out of 100 parallel worlds? Run the check 200 times
+(200 fresh draws of the y-noise only) and report the empirical
+coverage of both CIs — two decimals.
+
+```python
+# YOUR CODE
+```
+
+## E3 (L4) — Sampling scatter, seen
+
+500 parallel 3-year histories (n = 756) of the SAME planted world
+(β = 0.8). Collect the 500 β̂'s. Compare their standard deviation to
+the SE formula from a single fit. Plot the histogram if you like; the
+number comparison is the deliverable. Then repeat with n = 189
+(9 months) — by what factor did the scatter grow, and does √n
+predict it?
+
+```python
+# YOUR CODE
+```
+
+## E4 (L5) — R² calibration ladder
+
+Fit market-model regressions in both modes and tabulate R²: (a) SPY ~
+QQQ (two indices); (b) AAPL ~ SPY (stock ~ market; real) or an
+equivalent synthetic pair; (c) your asset's *next-day* return on
+today's market return (a (bad) predictive regression). Which R² values
+match the lesson's calibration bands? What is suspicious about (c) if
+its R² ever comes out large?
+
+```python
+# YOUR CODE
+```
+
+## E5 (L6) — The quote repair
+
+A slide says: "Our factor's loading is 1.35, comfortably above 1, and
+the model explains 87% of variance." Rewrite the sentence as a
+researcher would (three numbers per claim, one honest caveat). Then
+state what additional fact about the data would make you distrust the
+0.87 instantly.
+
+```python
+# Your answer:
+```
+
+## Hints
+
+- E1: Var̂(β̂) = σ̂²·(XᵀX)⁻¹ with σ̂² = SSE/(n−2); SEs are sqrt(diag);
+  sm.OLS(...).fit() carries .params, .bse, .tvalues, .rsquared — match
+  each by name.
+- E2: coverage = fraction of runs where truth ∈ CI. Both CIs should
+  cover ≈ 0.95 (±0.03 at 200 runs — the SE of a binomial proportion).
+- E3: sd of β̂'s ≈ mean of per-fit SEs ≈ formula. Going n 756→189 cuts
+  √n by 2×, so scatter doubles.
+- E4: (a) R² ≈ 0.9; (b) ≈ corr² ≈ 0.2–0.4; (c) should be ≈ 0 —
+  a large R² in a *predictive* returns regression is a look-ahead
+  alarm (did shift discipline hold? module 05) or an artifact of
+  overlapping prices.

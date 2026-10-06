@@ -1,0 +1,187 @@
+# Day 16 — Solution: Reading Fama & French (1992)
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+from scipy import stats
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+
+def ols_multi(X_cols, y):
+    X = np.column_stack([np.ones(len(y))] + [np.asarray(c, float) for c in X_cols])
+    y = np.asarray(y, float)
+    n, k = X.shape
+    XtX_inv = np.linalg.inv(X.T @ X)
+    b = XtX_inv @ X.T @ y
+    e = y - X @ b
+    s2 = e @ e / (n - k)
+    se = np.sqrt(np.diag(s2 * XtX_inv))
+    r2 = 1 - (e @ e) / ((y - y.mean()) @ (y - y.mean()))
+    return {"b": b, "se": se, "r2": r2}
+
+def fama_macbeth(frame, ycol, xcols):
+    rows, r2s = {}, {}
+    for m, g in frame.groupby(level=0):
+        g = g[[ycol] + xcols].dropna()
+        if len(g) < 10:
+            continue
+        Zs = [(g[c] - g[c].mean()) / g[c].std() for c in xcols]
+        f = ols_multi(Zs, g[ycol].values)
+        rows[m] = f["b"]; r2s[m] = f["r2"]
+    lam = pd.DataFrame(rows, index=["const"] + xcols).T
+    T = len(lam)
+    out = pd.DataFrame({"mean": lam.mean(), "SE": lam.std(ddof=1)/np.sqrt(T),
+                        "t": lam.mean()/(lam.std(ddof=1)/np.sqrt(T))})
+    return lam, out, pd.Series(r2s).mean()
+
+def show(tab, title):
+    out = (tab.assign(bp=tab["mean"]*1e4)[["bp", "t"]]).round(2)
+    print(f"--- {title} ---"); print(out.to_string())
+```
+
+## E1 — the claims map (exemplar)
+
+| Claim | Evidenced by | Rivals it can't rule out |
+|---|---|---|
+| β flat | univariate β column: slope ≈ 0, |t| < 1 | EIV-attenuated true premium; sample-period flatness |
+| size (−) | avg slope < 0, t ≈ −2.6 | a factor proxying size (liquidity, distress) |
+| BM (+) | avg slope > 0, t ≈ +4.4 | risk vs mispricing — the table can't say which |
+| absorb leverage, E/P | their slopes ≈ 0 in the joint column | collinear triads, attribution limited by n |
+| absorb β | β slope ≈ 0 in joint while size/BM survive | world B: β priced but correlated with size (E2) |
+
+**The meta-point of the table:** every "X prices returns" row is a claim
+about a world, and column-until-joint reading is the FILING SYSTEM for
+which alternative worlds remain live.
+
+## E2 — two worlds, one grammar
+
+```python
+N, T = 100, 240
+rng = np.random.default_rng(50)
+m_t = rng.normal(0.007, 0.045, T)
+
+def world_frame(kind, seed):
+    r = np.random.default_rng(seed)
+    beta = r.normal(1.0, 0.4, N)
+    eps = r.normal(0, 0.05, (T, N))
+    if kind == "A":   # FF92's world: premia on size and BM; beta flat
+        zs = r.normal(0, 1, N)
+        zbm = 0.3 * zs + np.sqrt(1 - 0.3**2) * r.normal(0, 1, N)
+        R = np.outer(m_t, beta) - 0.0015 * zs + 0.0020 * zbm + eps
+    else:             # world B: premium on BETA ONLY; size shadows it
+        zs = -0.8 * (beta - 1) / 0.4 + 0.6 * r.normal(0, 1, N)
+        zbm = 0.3 * zs + np.sqrt(0.91) * r.normal(0, 1, N)
+        R = np.outer(m_t, beta) + 0.006 * (beta - 1) + eps
+    idx = pd.MultiIndex.from_product([range(T), range(N)], names=["month", "name"])
+    return pd.DataFrame({"r": R.ravel(order="F"), "beta": np.tile(beta, T),
+                         "size": np.tile(zs, T), "bm": np.tile(zbm, T)}, index=idx)
+
+for kind in ["A", "B"]:
+    fr = world_frame(kind, 51)
+    print(f"\n===== WORLD {kind} =====")
+    for xc in ["beta", "size", "bm"]:
+        _, tab, _ = fama_macbeth(fr, "r", [xc]); show(tab.loc[[xc]], f"univariate [{xc}]")
+    _, tab, r2m = fama_macbeth(fr, "r", ["beta", "size", "bm"])
+    show(tab.loc[["beta", "size", "bm"]], f"JOINT  (mean monthly R2 {r2m:.3f})")
+```
+
+**Expected tables.** World A: β univariate ≈ 0 (|t| < 1), size ≈ −15bp
+(t ≈ −4), BM ≈ +20bp (t ≈ +5–6); joint: size/BM hold, β stays ≈ 0 —
+*the FF92 pattern, painted by hand.* World B: univariate size shows a
+STRONG negative "premium" (t ≈ −4 or worse — fake! It's β's shadow),
+joint: β ≈ +24bp/σ coherent and significant while size's slope collapses
+toward zero. **Now the disquiet that must stay with you: both worlds
+print a clean, internally consistent table — one true, one a
+correlation-driven counterfeit — and nothing INSIDE either table flags
+which.** This is why asset pricing argues with priors, theory, and
+window/benchmark variations (days 17, 19), not with tables alone. (Slight
+dosage difference vs FF92: our T = 240 months vs their 330 — same
+grammar, shorter book.)
+
+## E3 — EIV attenuation and the portfolio repair
+
+```python
+frB = world_frame("B", 51)
+rng2 = np.random.default_rng(60)
+sigma_eiv = 0.25
+frB["beta_est"] = frB["beta"] + np.tile(rng2.normal(0, sigma_eiv, N), T)
+_, tab, _ = fama_macbeth(frB, "r", ["beta_est", "size", "bm"])
+show(tab.loc[["beta_est"]], "world B joint, beta ESTIMATED")
+print(f"naive attenuation prediction: slope ratio = var(beta)/(var(beta)+sigma_eiv^2) = "
+      f"{0.4**2 / (0.4**2 + sigma_eiv**2):.2f}")
+
+# FF92-style repair: decile-bin the estimated betas, assign bin means
+bins = pd.qcut(frB.groupby(level=1)["beta_est"].first(), 10, labels=False)
+bin_mean = frB.groupby(level=1)["beta_est"].first().groupby(bins).transform("mean")
+frB["beta_bin"] = np.tile(bin_mean.values, T)
+_, tab2, _ = fama_macbeth(frB, "r", ["beta_bin", "size", "bm"])
+show(tab2.loc[["beta_bin"]], "world B joint, beta BINNED")
+print(f"grouped-EIV prediction: var(beta)/(var(beta)+sigma_eiv^2/10) = "
+      f"{0.4**2 / (0.4**2 + sigma_eiv**2/10):.2f}")
+```
+
+**Expected numbers.** Individual β̂_est: slope attenuates to ≈ 0.7 of the
+E2 value (formula: 0.72) — a +24bp premium becomes ≈ 17bp, and worse,
+**its SE barely moves, so the t drops meaningfully: EIV manufactures
+"weak premia" out of real ones.** Binned betas: slope recovers to ≈ 0.95
+of E2 (grouping divisor: σ²_eiv/10) — Fama & French's portfolio
+pre-ranking doing exactly the work they designed it for. The conclusion
+isn't "beta measured with error, case closed" — it is that *the degree to
+which the data can speak about beta is itself engineered*, and FF92
+engineered as well as the era allowed. Shanken's point (that residual
+EIV still softens the second-stage t) is the module-09 bill you now know
+how to read.
+
+## E4 — the June discipline, violated for science
+
+```python
+r_by_name = frB["r"].groupby(level=1).apply(lambda s: s.values)
+frB["bm_leak"] = np.tile(
+    (frB.groupby(level=1)["bm"].first() + 0.3 * (r_by_name.apply(lambda s: s.mean()) / 0.05)).values, T)
+_, t1, _ = fama_macbeth(frB, "r", ["bm"]); show(t1.loc[["bm"]], "honest BM (world B: true effect ~ 0.3*zs shadow)")
+_, t2, _ = fama_macbeth(frB, "r", ["bm_leak"]); show(t2.loc[["bm_leak"]], "LEAKED BM (contains same-window return)")
+```
+
+**Expected pattern.** Honest BM in world B: weak shadow of the β–size
+correlation. Leaked BM: the slope nearly doubles its |t| — *because the
+"characteristic" now literally contains the response it is predicting.*
+The discipline translates directly: accounting values measured with June-
+t+1 information predicting July-t+1 onward returns is FF's firewall;
+relax it and every stale-filed annual report becomes a crystal ball.
+Module 05's lesson dressed as econometrics: **point-in-time is a property
+of the data pipeline, not a footnote** — and E4 is why every day-19/21
+characteristic must carry its "known as of" timestamp into the frame.
+
+## E5 — the obituary review (exemplar)
+
+**Charitable.** FF92 replaced forty years of "beta intuitively must
+price returns" with careful numbers: on 330 months of post-1962 data,
+the average FM slope on pre-ranked β is ≈ 0 with tight SEs, while size
+(−) and BM (+) carry t's of −2.6 and +4.4. The negative finding was
+earned with the era's best possible panel construction (point-in-time
+accounting matches, portfolio pre-ranking to minimize EIV): it did not
+"disprove CAPM" so much as prove that *the beta–return relation, at monthly
+frequency, 1963–1990, is not detectable where everyone assumed it lived*,
+and that two cheap characteristics dominate that period's attribution.
+
+**Critical.** Two measurement knives. (i) The β slope's CI does not
+exclude economically meaningful premia of the size CAPM needs — "flat"
+means "statistically indistinguishable from zero AND from some positive
+values", a less quotable but accurate sentence. (ii) β is an estimate, so
+its slope is attenuated (E3: an EIV σ of one quarter of the β spread
+already erases ~30% of a real premium; sorting repairs only most of it,
+and the repair itself assumes portfolios don't group by the error).
+And the E2 world-B symmetry: in a world where β IS priced but correlates
+with size, FF92's own table grammar would record 'β flat, size priced' —
+the absorption column cannot adjudicate between worlds whose priors
+differ. The correct legacy is not "CAPM is dead" but "beta must argue
+for its premium like everyone else" — which is exactly what module 07
+will make it do, with forty more years of data and better machinery.

@@ -1,0 +1,114 @@
+# Day 9 — Exercise: Multicollinearity
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+from scipy import stats
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+
+def ols_multi(X_cols, y):
+    X = np.column_stack([np.ones(len(y))] + [np.asarray(c, float) for c in X_cols])
+    y = np.asarray(y, float)
+    n, k = X.shape
+    XtX_inv = np.linalg.inv(X.T @ X)
+    b = XtX_inv @ X.T @ y
+    e = y - X @ b
+    s2 = e @ e / (n - k)
+    se = np.sqrt(np.diag(s2 * XtX_inv))
+    r2 = 1 - (e @ e) / ((y - y.mean()) @ (y - y.mean()))
+    return {"b": b, "se": se, "t": b / se, "r2": r2, "resid": e, "X": X}
+
+def vif(X_cols):
+    out = []
+    for j in range(len(X_cols)):
+        others = [c for i, c in enumerate(X_cols) if i != j]
+        r2j = ols_multi(others, X_cols[j])["r2"] if others else 0.0
+        out.append(1.0 / (1.0 - r2j))
+    return np.array(out)
+```
+
+## E1 (L3) — The inflation, by hand
+
+Generator: x1 = signal; x2 = ρ·x1 + √(1−ρ²)·noise; y = 1.0·x1 +
+1.0·x2 + ε. n = 1200. For ρ ∈ {0, 0.7, 0.9, 0.98}: fit, print SE(β̂₁)
+from the formula σ_e/(σ_x1√n√(1−ρ²)) AND from the fit, and the
+realized β̂₁, β̂₂. At which ρ does |β̂₁ − 1| typically exceed 0.5?
+One run per ρ (no loop needed), then say what a tournament would
+show.
+
+```python
+# YOUR CODE
+```
+
+## E2 (L4) — Joint vs individual
+
+On the ρ = 0.98 fit: (a) individual t's for β1, β2; (b) the joint
+F-test of β1 = β2 = 0 (F = [(SST−SSE)/2]/(SSE/(n−k))); (c) the
+t on the SUM β1+β2 via the regression y ~ s where s = x1+x2… almost —
+explain why that regression's slope-t approximates but doesn't equal
+the proper Wald t for the sum (compute the proper one:
+var(b1+b2) = v11 + v22 + 2v12 from the covariance matrix).
+
+```python
+# YOUR CODE
+```
+
+## E3 (L5) — SPY, QQQ, and a stock
+
+Real mode: regress AAPL daily returns on [SPY, QQQ]. Synthetic: build
+the equivalent (two 0.9-correlated indices + a stock loading on both).
+Report β̂'s, SEs, t's, VIFs. Then orthogonalize: QQQ' = residual of
+QQQ on SPY; refit AAPL ~ SPY + QQQ'. What happened to SE(β̂_SPY) and
+to the *interpretation* of each coefficient?
+
+```python
+# YOUR CODE
+```
+
+## E4 (L4) — The three-regressor blind spot
+
+Construct x3 = 0.5·x1 + 0.5·x2 + small noise, with corr(x1, x2) ≈ 0
+and all PAIRWISE correlations < 0.75. Compute the three pairwise
+corrs AND the three VIFs. What did pairwise inspection miss?
+
+```python
+# YOUR CODE
+```
+
+## E5 (L7) — The attribution dispute
+
+Two quants regress strategy returns on [value-factor, quality-factor]
+(corr 0.8). Quant A keeps only value ("its t is 2.3, quality's is
+0.9, so quality adds nothing"). Quant B replaces both with the first
+principal component ("the aggregate is what matters"). Rebut each in
+two sentences.
+
+```python
+# Your answer:
+```
+
+## Hints
+
+- E1: SE formula needs σ_e of the FULL model; σ_x1 ≈ 1 by
+  construction. At ρ = 0.98, SE ≈ 5× the ρ = 0 case.
+- E2(c): the sum-t from refitting differs because the constrained
+  regression re-estimates everything; the Wald t uses the ORIGINAL
+  covariance matrix — they agree in direction, differ in detail.
+  Report both; learn the Wald one.
+- E3: after orthogonalization, β̂_SPY's SE should roughly match a
+  univariate SPY fit; β̂_QQQ' reads as "the Nasdaq-specific tilt
+  holding the broad market constant" — the attribution is now by
+  construction, and its price is that the ordering (which factor
+  gets the shared variation) was YOUR assumption.
+- E4: VIF for x3 with R² ≈ 0.99 between x3 and (x1, x2) is ~50+.

@@ -1,0 +1,81 @@
+# Day 13 — Exercise: Review (Week 14)
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+from scipy import stats
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+```
+
+## R1 (L1) — Cold dump
+
+From blank: (a) NW meat formula with weights; (b) VIF formula + the
+regression defining it; (c) Cook's D; (d) the four panels with their
+repairs; (e) interaction readings. Grade honestly after.
+
+```python
+# YOUR DUMP:
+```
+
+## R2 (L4) — The 25-minute build
+
+`ols_multi`, `se_nw`, `winsor`. Then on ONE overlapped dataset (make it:
+n = 3000, daily noise, forward-21 sums on trailing-21 sums, β truth 3.0):
+fit with classical and NW(L=21) SEs, print both t's. Time yourself.
+
+```python
+# YOUR CODE
+```
+
+## R3 (L3) — Arithmetic trio
+
+(a) Forward-63 sums: ACF(21)? ACF(63)? (b) ρ = 0.9 regressors, n = 800,
+σ_e = 1, σ_x = 1: SE(β̂₁)? (c) y-winsorized tournament sd cut 25%,
+bias −5% with true β = 1.0: report E[β̂] and the bias in SE units if
+the tournament's sd is 0.04.
+
+```python
+# YOUR CODE
+```
+
+## R4 (L5) — The full protocol, one regression
+
+Pick your asset–market pair. Run: four-panel page (demands list), SE
+flavor decision, influence top-5 with delete-refit shift, crash
+interaction with pre-declared 90th-pct threshold, and the final
+two-sentence finding. This is the dress rehearsal for day 14.
+
+```python
+# YOUR CODE
+```
+
+## R5 (L7) — The consultancy report critique
+
+A paid report states: "All specifications robust (t > 4 throughout);
+overlap handled via bootstrapped SEs; outliers removed per standard
+practice; regime analysis available on request." List the four
+questions you send back, each tied to a specific day this week.
+
+```python
+# Your answer:
+```
+
+## Hints
+
+- R3(a): the ramp dies AT the overlap length, not after it.
+- R3(b): two-regressor closed form day 9; answer ~0.081.
+- R5: "bootstrapped SEs" on overlapped data begs WHICH bootstrap
+  (block length?); "outliers removed" begs WHICH rule and SHOW BOTH;
+  "regime on request" is the crisis beta hidden in the annex — ask
+  what choosing not to show it implies.

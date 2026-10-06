@@ -1,0 +1,139 @@
+# Day 2 — Solution: Coefficients & Residuals
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+from qrc.data import get_prices
+from qrc.synth import synthetic_prices
+
+if DATA_SOURCE == "real":
+    px = get_prices(["AAPL", "SPY"], start="2010-01-01")
+else:
+    px = synthetic_prices(n_days=3800, n_assets=2, seed=23, corr=0.5,
+                          drift_spread=0.00012)
+    px.columns = ["AAPL", "SPY"]
+
+r = np.log(px).diff().dropna()
+```
+
+## E1 — α̂ three ways
+
+```python
+x, y = r["SPY"].values, r["AAPL"].values
+X = np.column_stack([np.ones(len(x)), x])
+a_hat, b_hat = np.linalg.solve(X.T @ X, X.T @ y)
+by_means = y.mean() - b_hat * x.mean()
+print(f"alpha from regression : {a_hat:+.6f}/day = {a_hat*252*100:+.2f}%/yr")
+print(f"alpha from ȳ − β̂x̄   : {by_means:+.6f}/day  (identical: {np.isclose(a_hat, by_means)})")
+print(f"beta = {b_hat:.3f}   corr = {np.corrcoef(x, y)[0,1]:+.3f}")
+```
+
+**Expected reasoning.** The two computations agree to float precision —
+α̂ = ȳ − β̂x̄ is not an approximation but the *first-order condition* for the
+intercept. Reading the numbers: α̂ annualized looks meaningful (+5–13%/yr in
+real 2010–now data for a name like AAPL; in the synthetic world it is the
+planted drift spread, recoverable but noisy). **The interpretation line is
+always the same: "the average daily return the market did not explain" —
+then immediately: "with what SE?" (day 3).** A pronounced α̂ with no error
+bar attached is marketing, not measurement.
+
+## E2 — the orthogonality audit
+
+```python
+e = y - (a_hat + b_hat * x)
+yhat = a_hat + b_hat * x
+print(f"Sum(e)            = {e.sum():.2e}")
+print(f"Sum(x*e)          = {(x*e).sum():.2e}")
+print(f"var(y) - var(yhat) - var(e) = {y.var() - yhat.var() - e.var():.2e}")
+
+# no intercept
+X1 = x.reshape(-1, 1)
+b1 = np.linalg.solve(X1.T @ X1, X1.T @ y)[0]
+e1 = y - b1 * x
+print(f"\nno intercept: Sum(e) = {e1.sum():+.4f}   Sum(x*e) = {(x*e1).sum():.2e}")
+print(f"mean(e) = {e1.mean()*252*100:+.2f}%/yr  <- the alpha you forced into beta")
+```
+
+**Expected pattern.** With intercept: all three audits ≈ 1e-13 or smaller —
+internal accounting identities of OLS, as certain as 2+2. Without
+intercept: Σ(x·e) is still ~0 (the first-order condition for b enforces it)
+but **Σe visibly fails** — mean(e) ≈ −α_true ≈ −0.0002..−0.0008/day, the
+alpha you exiled by assumption. Which assumption was violated *when fitting
+no-intercept*? None yet — but the *estimand changed*: you estimated
+E[xy]/E[x²] instead of a de-marketed decomposition. The lesson that echoes
+into module 07: **a "zero-alpha" constraint is a research finding you must
+earn, not a default you may impose.**
+
+## E3 — idio vs total vol; the de-marketed position
+
+```python
+vol_t = y.std() * np.sqrt(252)
+vol_sys = yhat.std() * np.sqrt(252)
+vol_idio = e.std() * np.sqrt(252)
+r_dm = y - b_hat * x
+print(f"total {vol_t:.1%} | systematic {vol_sys:.1%} | idio {vol_idio:.1%} | idio share {vol_idio**2/vol_t**2:.0%}")
+print(f"corr(r_dm, r_SPY) = {np.corrcoef(r_dm, x)[0,1]:+.2e}")
+print(f"r_dm equals alpha + e: {np.allclose(r_dm, a_hat + e)}")
+```
+
+**Expected pattern.** Real AAPL: total ~24–28%, idio ~60–65% of variance —
+the market explains a *minority* of a single stock's variance (day 3's R²
+≈ corr² ≈ 0.5² ≈ 0.25–0.35). corr(r_dm, x) ≈ 1e-16: exactly zero in-sample,
+because r_dm = α̂ + e and e ⊥ x by construction. **What you built: the
+market-neutral long — "own AAPL's company-specific outcome without market
+beta" — one subtraction away from the raw series.** Module 07 charges you
+for this comfort: zero *in-sample* β is a property of the window, and
+out-of-sample the hedge leaks. Common mistake: reporting vol_idio/vol_t as
+a ratio of *vols* — the shares add up in *variance* (identity 3), so quote
+variance shares only.
+
+## E4 — the event-study primitive
+
+```python
+top = pd.Series(e, index=r.index).abs().nlargest(10)
+out = pd.DataFrame({
+    "resid": pd.Series(e, index=r.index)[top.index],
+    "mkt": pd.Series(x, index=r.index)[top.index],
+})
+print((out * 100).round(2).to_string())
+print(f"\ncorr(|e|, |x|) = {np.corrcoef(np.abs(e), np.abs(x))[0,1]:+.2f}")
+```
+
+**Expected pattern.** The ten largest |e| days are *not* the largest market
+days — corr(|e|,|x|) lands near 0 (real data: small positive; the vol
+clustering correlation of module 03 leaks into absolute values even when
+e ⊥ x in levels — worth one surprised sentence in your log). With earnings
+dates joined in, you are three lines from an event study:
+`abnormal = e[event_window]`, `cumulate`, `average across events`: **the
+residual IS the abnormal return, and today's identities are why the
+estimator is clean** (mean-zero by construction ⟹ no level bias in CARs).
+
+## E5 — the "zero-beta" sales pitch (exemplar)
+
+**Statistical objection.** β ≈ 0 is an *in-sample, this-window* identity
+(corr(r_dm, x) ≡ 0 by construction of e). Out-of-sample the ex-ante betas
+drift (day 17): the strategy's realized market correlation in the next
+quarter is an estimate, likely 0.1–0.3 in magnitude — "zero exposure" is a
+fitting artifact sold as a property of the world.
+
+**Economic objection.** r_dm = r_AAPL − β̂·r_SPY is short β̂ units of SPY:
+the position carries borrow/financing costs, short-side constraints, and —
+decisively — it is *concentrated single-name idio risk* (E3: ~60–65% of
+AAPL's variance). A one-stock residual book is not "market neutral" in any
+risk sense a PM cares about; it is market-hedged and idio-loaded. Neutrality
+to one regressor ≠ neutrality to risk.
+
+**Common mistakes across the day.** Reading identities as evidence
+(orthogonality is *imposed*, not discovered); quoting annualized α̂ from a
+daily regression without SE; calling the residual "noise" — the residual is
+the object modules 07, 10, and 11 spend their lives pricing.

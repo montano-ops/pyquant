@@ -1,0 +1,123 @@
+# Day 18 — Exercise: Which SE When
+
+## Setup
+
+```python
+import os, sys, pathlib
+root = pathlib.Path.cwd()
+for _ in range(6):
+    if (root / "qrc").is_dir():
+        break
+    root = root.parent
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+
+import numpy as np
+import pandas as pd
+from scipy import stats
+DATA_SOURCE = os.environ.get("QRC_DATA", "real")
+
+def ols_multi(X_cols, y):
+    X = np.column_stack([np.ones(len(y))] + [np.asarray(c, float) for c in X_cols])
+    y = np.asarray(y, float)
+    n, k = X.shape
+    XtX_inv = np.linalg.inv(X.T @ X)
+    b = XtX_inv @ X.T @ y
+    e = y - X @ b
+    s2 = e @ e / (n - k)
+    se_c = np.sqrt(np.diag(s2 * XtX_inv))
+    return {"b": b, "se_c": se_c, "resid": e, "X": X, "XtX_inv": XtX_inv}
+
+def se_white(X, e):
+    XtX_inv = np.linalg.inv(X.T @ X)
+    meat = X.T @ (e[:, None] ** 2 * X)
+    k = X.shape[1]; n = X.shape[0]
+    return np.sqrt(np.diag(XtX_inv @ meat @ XtX_inv)) * np.sqrt(n / (n - k))
+
+def se_nw(X, e, L):
+    xe = X * e[:, None]
+    meat = xe.T @ xe
+    for l in range(1, L + 1):
+        w = 1 - l / (L + 1)
+        G = xe[l:].T @ xe[:-l]
+        meat += w * (G + G.T)
+    XtX_inv = np.linalg.inv(X.T @ X)
+    return np.sqrt(np.diag(XtX_inv @ meat @ XtX_inv))
+```
+
+## E1 (L4) — The worlds
+
+Write generators for the four planted worlds, truth β = 0 (testing the
+null): `w_iid` (n = 1200), `w_het` (variance ∝ |x|, n = 1200),
+`w_overlap` (trailing-21 x vs forward-21 y, n = 3000 in days,
+non-overlap effective n ≈ 143 — WAIT and explain why the effective n
+matters for power), `w_panel` (50 × 120, common factor, fresh z).
+Verify each world's residual signature once (one diagnostic line
+each).
+
+```python
+# YOUR CODE
+```
+
+## E2 (L4) — The tournament
+
+300 runs per world. Per run: classical t, White t, and NW t (L = 3 and
+L = 21 for overlap; L = 4 otherwise); for the panel world also the FM
+t. Assemble the rejection-rate matrix (worlds × estimators). This is
+THE table the module has been promising — build it on screen.
+
+```python
+# YOUR CODE
+```
+
+## E3 (L3) — Reading your table
+
+(a) Which estimator held ≈ 5% in every applicable world? (b) Quantify
+the classical column's failures (the number for each world). (c)
+White-on-overlap vs NW-on-overlap: the gap; (d) NW(L = 3)-on-overlap
+vs NW(L = 21): the partial-repair penalty. (e) The iid row: what did
+the robust flavors COST?
+
+```python
+# YOUR CODE + prose
+```
+
+## E4 (L6) — The flowchart, written
+
+Write the routing flowchart as nested IF sentences starting with "Is
+the observation structure a panel (units × time)?" — every branch
+ending in (estimator, lag/flavor, one-line reason). Then annotate
+each of this module's past exercises with the branch it belonged to.
+
+```python
+# YOUR ANSWER:
+```
+
+## E5 (L7) — The stranger's table
+
+Three findings from imaginary papers. For each: the SE flavor you
+SUSPECT was used, the flavor the structure demands, the direction the
+t moves on repair, and your confidence in the finding after repair.
+
+(i) 12,000 firm-months, "value premium t = 5.2 (robust SEs)".
+(ii) Daily overlap of 63-day windows, "trend-following alpha t = 4.4
+(classical)".
+(iii) 2,500 single-name daily obs, "β > 1, t = 3.1 (White)".
+
+```python
+# Your answer:
+```
+
+## Hints
+
+- E1 w_overlap: also test y-placeholders with NW at L = 21: the
+  overlap rule means the CLASSICAL SE divides the honest SE by ~√q.
+- E2: keep runs' inner code shared with week 14's; the matrix printout
+  should look like:
+                classical  white  nw_3  nw_21  fm
+      iid         ...
+- E3(e): robust flavors in iid world: slight over/under-coverage and a
+  fatter estimate of SE itself (sd of SE across runs) — the tax is
+  small but real: quote it precisely from your runs.
+- E5: use your tournament numbers as the haircut table — that's what
+  it's for.
